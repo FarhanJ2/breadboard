@@ -1,0 +1,56 @@
+---
+/**
+ * RobotExplorer
+ * -------------
+ * Part data for the 2026 competition robot (SHAQ); all behaviour lives in
+ * PartExplorer. Renders in /public/projects/frc-rebuilt-2026/, with robot.png
+ * as the default view.
+ */
+import PartExplorer from "./PartExplorer.astro";
+import type { Part } from "./partExplorer";
+
+const parts: Part[] = [
+  {
+    key: "indexer", side: "left", kicker: "Indexer", hx: 56, hy: 36,
+    desc: "Compliant rollers that meter game pieces one at a time out of the spindexer and up into the shooter.",
+  },
+  {
+    key: "spindexer", side: "left", kicker: "Spindexer", hx: 51, hy: 48,
+    desc: "A rotating wheel that feeds game pieces towards the indexer. The Spindexer is ran via two Kraken x60 motors and ran on a 4:1 ratio. Having two motors lets us keep a higher speed and ensure we have enough torque to breakaway any jams.",
+  },
+  {
+    key: "intake", side: "left", kicker: "Intake", hx: 24, hy: 66,
+    desc: "Full-width over the bumper intake running on a rack and pinion. Ran independently via two Kraken x44 motors one on each side, on a 7:1 gear ratio on each side.",
+  },
+  {
+    key: "chassis", side: "left", kicker: "Chassis", hx: 44, hy: 70,
+    desc: "Ran via MK5is on a R2 ratio, this drivetrain uses hole punched 2x1 tubes and has middle structural support tubes running through it.",
+  },
+  {
+    key: "cameras", side: "right", kicker: "Cameras", hx: 80, hy: 11,
+    desc: "Running 6 Arducams, a mix between the OV2311s, for cameras deemed to need a further viewing range, and between OV9281s, for cameras that were to be used the most, utilizing its higher FPS.",
+  },
+  {
+    key: "shooter", side: "right", kicker: "Shooter", hx: 58, hy: 20,
+    desc: "Flywheel shooter on a pocketed hood, tuned via our custom trajectory tuner app. This shooter has two Kraken x60s running on a 1:2 ratio. The hood is ran by a Kraken x44 on a 4.86:1 ratio and is ran via a curved rack and pinion.",
+  },
+  {
+    key: "turret", side: "right", kicker: "Turret", hx: 56, hy: 32,
+    desc: 'Continuous rotation of 420 degrees, this turret is ran on a 3D printed herringbone gear running at a 20.44:1 gear ratio via a Kraken x60. A custom "casette" is created which uses 4 constant force springs to pull back the turret wiring to not leave any slack. A custom feedforward algorithm was needed to be created to overcome the constant force on the turret.',
+  },
+  {
+    key: "leds", side: "right", kicker: "LED panels", hx: 72, hy: 43,
+    desc: "Side-mounted addressable panels with a 32 x 4 sized grid. The grid showed match data, match time, and much more.",
+  },
+];
+---
+
+<PartExplorer
+  base="/projects/frc-rebuilt-2026"
+  full="robot.png"
+  label="SHAQ"
+  aspect={1.647}
+  parts={parts}
+/>
+
+

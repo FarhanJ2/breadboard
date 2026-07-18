@@ -1,0 +1,327 @@
+---
+/**
+ * PartExplorer
+ * ------------
+ * Interactive exploded-diagram: a default full render with callouts around it.
+ * Hover/tap a callout (or its hotspot dot) and the stage crossfades to that
+ * part's highlighted x-ray view; click to pin it.
+ *
+ * Renders live in /public/<base>/ — one `full.png`-style default plus one PNG
+ * per part, named after its `key`. Hotspot coords (hx/hy) are % of the stage.
+ */
+import type { Part } from "./partExplorer";
+
+interface Props {
+  /** Public path holding the renders, no trailing slash. */
+  base: string;
+  /** Filename (inside `base`) of the default un-highlighted render. */
+  full: string;
+  parts: Part[];
+  /** Stage aspect ratio, width / height. */
+  aspect?: number;
+  /** Prefix for image alt text, e.g. "Driver station". */
+  label: string;
+  hint?: string;
+}
+
+const {
+  base,
+  full,
+  parts,
+  aspect = 1.66,
+  label,
+  hint = "hover a label to see the part · click to pin",
+} = Astro.props;
+
+const left = parts.filter((p) => p.side === "left");
+const right = parts.filter((p) => p.side === "right");
+---
+
+<figure class="ds" data-active="full" style={`--ds-aspect:${aspect}`}>
+  <div class="ds__grid">
+    <div class="ds__col ds__col--left">
+      {left.map((p) => (
+        <button class="ds__callout" data-target={p.key} data-side="left" type="button">
+          <span class="ds__kicker">{p.kicker}</span>
+          <span class="ds__desc">{p.desc}</span>
+        </button>
+      ))}
+    </div>
+
+    <div class="ds__stage">
+      <img class="ds__img is-active" data-key="full" src={`${base}/${full}`} alt={`${label} — full view`} loading="lazy" />
+      {parts.map((p) => (
+        <img class="ds__img" data-key={p.key} src={`${base}/${p.key}.png`} alt={`${label} — ${p.kicker} highlighted`} loading="lazy" />
+      ))}
+
+      {parts.map((p) => (
+        <button
+          class="ds__hotspot"
+          data-target={p.key}
+          type="button"
+          aria-label={p.kicker}
+          style={`left:${p.hx}%; top:${p.hy}%`}
+        ><span></span></button>
+      ))}
+    </div>
+
+    <div class="ds__col ds__col--right">
+      {right.map((p) => (
+        <button class="ds__callout" data-target={p.key} data-side="right" type="button">
+          <span class="ds__kicker">{p.kicker}</span>
+          <span class="ds__desc">{p.desc}</span>
+        </button>
+      ))}
+    </div>
+
+    <svg class="ds__lines" preserveAspectRatio="none" aria-hidden="true">
+      {parts.map((p) => <line class="ds__line" data-target={p.key} />)}
+    </svg>
+  </div>
+  <figcaption class="ds__hint">{hint}</figcaption>
+</figure>
+
+<style>
+  .ds {
+    --muted: #8b8f9b;
+    --soft: #b3b0a8;
+    --line: rgba(190, 196, 214, 0.32);
+    --accent: #ffb454;
+    /* transparent, no card — the PNGs sit straight on the page. break out full width. */
+    width: min(1360px, 96vw);
+    position: relative;
+    left: 50%;
+    transform: translateX(-50%);
+    margin: 2.6rem 0;
+    color: var(--soft);
+  }
+  .ds__grid {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(150px, 200px) minmax(0, 1fr) minmax(150px, 200px);
+    gap: clamp(10px, 1.6vw, 22px);
+    align-items: center;
+  }
+
+  .ds__col { display: flex; flex-direction: column; gap: 26px; }
+  .ds__col--left { text-align: right; align-items: flex-end; }
+  .ds__col--right { text-align: left; align-items: flex-start; }
+
+  .ds__callout {
+    appearance: none;
+    background: none;
+    border: none;
+    padding: 4px 2px;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    max-width: 210px;
+    color: inherit;
+    font: inherit;
+    transition: transform 0.18s ease;
+  }
+  .ds__col--left .ds__callout { align-items: flex-end; }
+  .ds__kicker {
+    font-family: var(--font-mono, monospace);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+    transition: color 0.18s ease;
+  }
+  .ds__desc {
+    font-family: var(--font-body, Georgia, serif);
+    font-size: 0.9rem;
+    line-height: 1.45;
+    color: var(--soft);
+    transition: color 0.18s ease;
+  }
+  .ds__callout.is-active { transform: translateY(-1px); }
+  .ds__callout.is-active .ds__kicker { color: var(--accent); }
+  .ds__callout.is-active .ds__desc { color: #e8e6e1; }
+  .ds__callout:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 6px; }
+
+  /* --- stage --- */
+  .ds__stage {
+    position: relative;
+    aspect-ratio: var(--ds-aspect, 1.66);
+    width: 100%;
+  }
+  .ds__img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+    pointer-events: none;
+  }
+  .ds__img.is-active { opacity: 1; }
+  /* neutralize the project page's .prose img styling (border / radius / margin) */
+  .ds .ds__img { border: none; border-radius: 0; margin: 0; box-shadow: none; }
+
+  .ds__lines {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+    pointer-events: none;
+    z-index: 3;
+  }
+  .ds__line {
+    stroke: var(--line);
+    stroke-width: 1;
+    opacity: 0.7;
+    transition: stroke 0.18s ease, stroke-width 0.18s ease, opacity 0.18s ease;
+  }
+  .ds__line.is-active { stroke: var(--accent); stroke-width: 1.5; opacity: 1; }
+
+  .ds__hotspot {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    width: 26px;
+    height: 26px;
+    display: grid;
+    place-items: center;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    z-index: 2;
+  }
+  .ds__hotspot span {
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    background: #fff;
+    border: 2px solid var(--muted);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+    transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+  }
+  .ds__hotspot:hover span,
+  .ds__hotspot.is-active span {
+    background: var(--accent);
+    border-color: var(--accent);
+    transform: scale(1.35);
+  }
+  .ds__hotspot.is-active::after {
+    content: "";
+    position: absolute;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    border: 1.5px solid var(--accent);
+    opacity: 0.5;
+    animation: ds-ping 1.6s ease-out infinite;
+  }
+  @keyframes ds-ping { 0% { transform: scale(0.6); opacity: 0.6; } 100% { transform: scale(1.6); opacity: 0; } }
+
+  .ds__hint {
+    margin-top: 12px;
+    text-align: center;
+    font-family: var(--font-mono, monospace);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+  }
+
+  @media (max-width: 760px) {
+    .ds__grid { grid-template-columns: 1fr; }
+    .ds__col { flex-direction: row; flex-wrap: wrap; gap: 14px; text-align: left !important; align-items: flex-start !important; order: 2; }
+    .ds__col--left .ds__callout,
+    .ds__callout { align-items: flex-start !important; max-width: none; flex: 1 1 45%; }
+    .ds__stage { order: 1; }
+    .ds__lines { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ds__img { transition: none; }
+    .ds__hotspot.is-active::after { animation: none; }
+  }
+</style>
+
+<script>
+  function initExplorer(root: HTMLElement): () => void {
+    const imgs = Array.from(root.querySelectorAll<HTMLElement>(".ds__img"));
+    const callouts = Array.from(root.querySelectorAll<HTMLElement>(".ds__callout"));
+    const hotspots = Array.from(root.querySelectorAll<HTMLElement>(".ds__hotspot"));
+    const lines = Array.from(root.querySelectorAll<SVGLineElement>(".ds__line"));
+    const svg = root.querySelector<SVGSVGElement>(".ds__lines");
+    const grid = root.querySelector<HTMLElement>(".ds__grid");
+    let pinned: string | null = null;
+
+    const activate = (key: string) => {
+      root.dataset.active = key;
+      imgs.forEach((i) => i.classList.toggle("is-active", i.dataset.key === key));
+      callouts.forEach((c) => c.classList.toggle("is-active", c.dataset.target === key));
+      hotspots.forEach((h) => h.classList.toggle("is-active", h.dataset.target === key));
+      lines.forEach((l) => l.classList.toggle("is-active", l.dataset.target === key));
+    };
+    const reset = () => activate(pinned ?? "full");
+
+    [...callouts, ...hotspots].forEach((el) => {
+      const key = el.dataset.target!;
+      el.addEventListener("mouseenter", () => activate(key));
+      el.addEventListener("focus", () => activate(key));
+      el.addEventListener("click", () => {
+        pinned = pinned === key ? null : key;
+        activate(pinned ?? "full");
+      });
+    });
+    root.addEventListener("mouseleave", reset);
+    root.addEventListener("focusout", (e) => {
+      if (!root.contains((e as FocusEvent).relatedTarget as Node)) reset();
+    });
+
+    const drawLines = () => {
+      if (!svg || !grid) return;
+      if (getComputedStyle(svg).display === "none") return;
+      const gr = grid.getBoundingClientRect();
+      svg.setAttribute("viewBox", `0 0 ${gr.width} ${gr.height}`);
+      lines.forEach((line) => {
+        const key = line.dataset.target!;
+        const cal = root.querySelector<HTMLElement>(`.ds__callout[data-target="${key}"]`);
+        const hot = root.querySelector<HTMLElement>(`.ds__hotspot[data-target="${key}"]`);
+        if (!cal || !hot) return;
+        const cr = cal.getBoundingClientRect(), hrr = hot.getBoundingClientRect();
+        const ax = (cal.dataset.side === "left" ? cr.right : cr.left) - gr.left;
+        const ay = cr.top + cr.height / 2 - gr.top;
+        const bx = hrr.left + hrr.width / 2 - gr.left;
+        const by = hrr.top + hrr.height / 2 - gr.top;
+        line.setAttribute("x1", String(ax));
+        line.setAttribute("y1", String(ay));
+        line.setAttribute("x2", String(bx));
+        line.setAttribute("y2", String(by));
+      });
+    };
+
+    activate("full");
+    drawLines();
+    requestAnimationFrame(drawLines);
+    const ro = new ResizeObserver(drawLines);
+    ro.observe(root);
+    const onResize = () => drawLines();
+    window.addEventListener("resize", onResize);
+    // redraw once any not-yet-loaded images settle their layout
+    root.querySelectorAll("img").forEach((img) => {
+      if (!(img as HTMLImageElement).complete) img.addEventListener("load", drawLines, { once: true });
+    });
+    // cleanup only the page-global handlers (element listeners die with the DOM)
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", onResize);
+    };
+  }
+
+  // re-init on every view-transition navigation; tear down old global listeners first
+  let cleanups: Array<() => void> = [];
+  function setupExplorers() {
+    cleanups.forEach((fn) => fn());
+    cleanups = [];
+    document.querySelectorAll<HTMLElement>(".ds").forEach((root) => cleanups.push(initExplorer(root)));
+  }
+  document.addEventListener("astro:page-load", setupExplorers);
+</script>
