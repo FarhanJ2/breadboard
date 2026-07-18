@@ -1,17 +1,33 @@
 ---
 title: "FRC Rebuilt - Steel Hawks"
 codename: "SHAQ"
-blurb: ""
+blurb: "The best one yet."
 year: "2026"
 status: "shipped"
 category: "robot"
 tech: ["CAN", "Java", "Electrical", "CAD", "JavaScript"]
 order: 20
 links:
-  docs: "https://steelhawks.github.io/docs"
+  github: "https://github.com/steelhawks/Rebuilt2026"
 ---
 
 import RobotExplorer from "../../components/RobotExplorer.astro";
 
 <RobotExplorer />
 
+![Field calibration at HVR](/projects/frc-rebuilt-2026/team_hvr.jpg)
+Our robot at Hudson Valley Regional during Field calibration
+
+
+# background
+
+Shaquille O'Steel is Steel Hawks' 2026 competition robot — it is the last robot I worked on as a student. 
+It is composed of multiple subsystems as seen above, and each subsystem brought unique programmatic challenges to be solved.
+The most in-depth subsystem is the turret-shooter assembly, requiring the robot to track and hit a target while both the robot and the target's effective position are constantly shifting — a capability known as shoot-on-the-move (SOTM). Rather than aiming at the hub directly, the turret computes a virtual target that accounts for the robot's current velocity, letting it lead the shot the same way an anti-aircraft gunner leads a moving plane. This meant the turret's tracking had to stay fast and precise across the entire rotation range.
+
+
+
+
+
+![Robot on its side](/projects/frc-rebuilt-2026/robot_side.jpg)
+Shaquille O'Steel taken to our hotel before our regional for some last minute testing.

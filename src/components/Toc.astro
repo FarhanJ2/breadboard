@@ -1,0 +1,155 @@
+---
+/**
+ * Toc
+ * ---
+ * Sticky side rail of section links, built from the headings Astro extracts
+ * from the MDX. Scroll-spy marks the section you're currently in.
+ *
+ * Renders nothing under 2 headings, and is hidden on narrow screens where
+ * there's no room beside the prose column.
+ */
+import type { MarkdownHeading } from "astro";
+
+interface Props {
+  headings: MarkdownHeading[];
+  /** Which heading levels to list. */
+  depth?: number[];
+}
+
+const { headings, depth = [2, 3] } = Astro.props;
+const items = headings.filter((h) => depth.includes(h.depth));
+---
+
+{items.length > 1 && (
+  <nav class="toc" aria-label="On this page">
+    <div class="toc__inner">
+      <p class="toc__title mono">On this page</p>
+      <ul>
+        {items.map((h) => (
+          <li class:list={["toc__item", `toc__item--d${h.depth}`]}>
+            <a href={`#${h.slug}`} data-slug={h.slug}>{h.text}</a>
+          </li>
+        ))}
+      </ul>
+    </div>
+  </nav>
+)}
+
+<style>
+  /* The rail spans the gutter left of the prose column, starting below any
+     full-bleed block at the top of the article (--toc-top, set in JS) so it
+     never overlaps one. The inner block sticks as you scroll down it. */
+  .toc {
+    position: absolute;
+    top: var(--toc-top, 0px);
+    bottom: 0;
+    left: -232px;
+    width: 200px;
+  }
+  .toc__inner {
+    position: sticky;
+    top: 96px;
+    max-height: 70vh;
+    overflow-y: auto;
+  }
+  .toc__title {
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin: 0 0 10px;
+  }
+  .toc ul { list-style: none; margin: 0; padding: 0; }
+  .toc__item { margin: 0; }
+  .toc__item a {
+    display: block;
+    padding: 5px 0 5px 12px;
+    border-left: 1px solid var(--line-soft);
+    color: var(--ink-faint);
+    font-size: 0.84rem;
+    line-height: 1.35;
+    transition: color 0.18s ease, border-color 0.18s ease;
+  }
+  .toc__item--d3 a { padding-left: 24px; font-size: 0.8rem; }
+  .toc__item a:hover { color: var(--ink-soft); border-color: var(--line); text-decoration: none; }
+  .toc__item a.is-active {
+    color: var(--amber);
+    border-color: var(--amber);
+  }
+
+  /* not enough room beside the prose — the in-page headings carry it instead */
+  @media (max-width: 1180px) {
+    .toc { display: none; }
+  }
+</style>
+
+<script>
+  function initToc() {
+    const toc = document.querySelector<HTMLElement>(".toc");
+    if (!toc) return;
+
+    // Drop the rail below any full-bleed block (e.g. a PartExplorer) sitting at
+    // the top of the prose — those break out wider than the column and the rail
+    // would otherwise sit on top of them.
+    const body = toc.parentElement;
+    const setTop = () => {
+      if (!body) return;
+      const first = body.querySelector(".prose")?.firstElementChild;
+      if (!(first instanceof HTMLElement) || !first.classList.contains("ds")) {
+        toc.style.setProperty("--toc-top", "0px");
+        return;
+      }
+      const gap = first.getBoundingClientRect().bottom - body.getBoundingClientRect().top;
+      toc.style.setProperty("--toc-top", `${Math.max(0, Math.round(gap + 28))}px`);
+    };
+    setTop();
+
+    const links = Array.from(toc.querySelectorAll<HTMLAnchorElement>("a[data-slug]"));
+    const targets = links
+      .map((a) => document.getElementById(a.dataset.slug!))
+      .filter((el): el is HTMLElement => el !== null);
+    if (!targets.length) return;
+
+    const setActive = (id: string) => {
+      links.forEach((a) => a.classList.toggle("is-active", a.dataset.slug === id));
+    };
+
+    // Track which headings are above the top of the viewport; the last one
+    // that has scrolled past is the section you're reading.
+    const seen = new Map<string, boolean>();
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((e) => seen.set(e.target.id, e.isIntersecting));
+        // prefer the first heading currently on screen, else the last one passed
+        const onScreen = targets.find((t) => seen.get(t.id));
+        if (onScreen) {
+          setActive(onScreen.id);
+          return;
+        }
+        const passed = targets.filter((t) => t.getBoundingClientRect().top < 0).pop();
+        if (passed) setActive(passed.id);
+      },
+      { rootMargin: "-80px 0px -65% 0px" }
+    );
+    targets.forEach((t) => observer.observe(t));
+
+    setActive(targets[0].id);
+
+    // the explorer's images settle late and change its height
+    const ro = new ResizeObserver(setTop);
+    if (body) ro.observe(body);
+    window.addEventListener("resize", setTop);
+
+    return () => {
+      observer.disconnect();
+      ro.disconnect();
+      window.removeEventListener("resize", setTop);
+    };
+  }
+
+  let teardown: (() => void) | void;
+  document.addEventListener("astro:page-load", () => {
+    if (teardown) teardown();
+    teardown = initToc();
+  });
+</script>

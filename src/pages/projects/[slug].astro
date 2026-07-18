@@ -3,6 +3,7 @@ import { getCollection, render } from "astro:content";
 import { Image } from "astro:assets";
 import Base from "../../layouts/Base.astro";
 import SiteHeader from "../../components/SiteHeader.astro";
+import Toc from "../../components/Toc.astro";
 
 export async function getStaticPaths() {
   const projects = await getCollection("projects");
@@ -11,7 +12,7 @@ export async function getStaticPaths() {
 
 const { project } = Astro.props;
 const d = project.data;
-const { Content } = await render(project);
+const { Content, headings } = await render(project);
 
 const statusLabel: Record<string, string> = {
   shipped: "SHIPPED", active: "ACTIVE", research: "RESEARCH", archived: "ARCHIVED",
@@ -54,8 +55,11 @@ const ext = [
       <Image src={d.cover} alt={d.coverAlt || d.title} class="cover" />
     )}
 
-    <div class="prose">
-      <Content />
+    <div class="pd__body">
+      <Toc headings={headings} />
+      <div class="prose">
+        <Content />
+      </div>
     </div>
   </article>
 
@@ -114,9 +118,15 @@ const ext = [
     margin: 4px 0 8px;
   }
 
+  /* containing block for the TOC rail, which hangs in the left gutter */
+  .pd__body { position: relative; }
+
   .prose { color: var(--ink-soft); font-size: 1.1rem; line-height: 1.7; margin-top: 26px; }
   .prose :global(p) { margin: 0 0 1.2em; }
   .prose :global(h2) { font-size: 1.5rem; color: var(--ink); margin: 1.7em 0 0.5em; }
+  .prose :global(h3) { font-size: 1.15rem; color: var(--ink); margin: 1.5em 0 0.4em; }
+  /* keep anchor jumps from parking a heading right at the viewport edge */
+  .prose :global(h2), .prose :global(h3) { scroll-margin-top: 84px; }
   .prose :global(ul) { margin: 0 0 1.2em; padding-left: 1.2em; }
   .prose :global(li) { margin: 0.3em 0; }
   .prose :global(a) { color: var(--amber); }
@@ -128,10 +138,31 @@ const ext = [
     border: 1px solid var(--line);
     margin: 1.6em 0;
   }
-  .prose :global(code) {
+  /* inline code only — inside a <pre> this box would paint once per wrapped
+     line fragment instead of around the block */
+  .prose :global(:not(pre) > code) {
     font-family: var(--font-mono); font-size: 0.85em;
     background: var(--bg-raise); border: 1px solid var(--line-soft);
     padding: 1px 5px; border-radius: 4px;
+  }
+  .prose :global(pre) {
+    margin: 1.5em 0;
+    padding: 16px 18px;
+    border: 1px solid var(--line-soft);
+    border-radius: 10px;
+    overflow-x: auto;
+    /* shiki sets its theme background inline; match the page instead */
+    background-color: var(--bg-inset) !important;
+  }
+  .prose :global(pre code) {
+    font-family: var(--font-mono);
+    font-size: 0.82rem;
+    line-height: 1.65;
+    background: none;
+    border: 0;
+    padding: 0;
+    /* let long lines scroll the block rather than wrap mid-token */
+    white-space: pre;
   }
   .prose :global(blockquote) {
     margin: 1.4em 0; padding: 2px 0 2px 18px;
