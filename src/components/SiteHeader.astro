@@ -1,7 +1,7 @@
 ---
 /** Persistent site header used on inner pages (index has its own brand-reveal one). */
 interface Props {
-  current?: "writing" | "projects";
+  current?: "writing" | "projects" | "connect";
 }
 const { current } = Astro.props;
 ---
@@ -15,7 +15,7 @@ const { current } = Astro.props;
     <nav class="nav">
       <a href="/blog" aria-current={current === "writing" ? "page" : undefined}>writing</a>
       <a href="/projects" aria-current={current === "projects" ? "page" : undefined}>projects</a>
-      <a href="mailto:hello@farhanj2.dev">connect</a>
+      <a href="/connect" aria-current={current === "connect" ? "page" : undefined}>connect</a>
     </nav>
   </div>
 </header>

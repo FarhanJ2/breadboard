@@ -1,0 +1,138 @@
+---
+import Base from "../layouts/Base.astro";
+import SiteHeader from "../components/SiteHeader.astro";
+
+// edit these — placeholder handles
+const channels = [
+  {
+    label: "Email",
+    value: "hello@farhanj2.dev",
+    href: "mailto:hello@farhanj2.dev",
+    ext: false,
+    note: "The fastest way to reach me.",
+  },
+  {
+    label: "GitHub",
+    value: "@farhanj2",
+    href: "https://github.com/farhanj2",
+    ext: true,
+    note: "Code, projects, and the source for this site.",
+  },
+  {
+    label: "LinkedIn",
+    value: "Farhan Jamil",
+    href: "https://www.linkedin.com/in/farhanj2",
+    ext: true,
+    note: "The professional-ish version.",
+  },
+];
+---
+
+<Base title="Connect — Farhan Jamil" description="Get in touch with Farhan Jamil.">
+  <SiteHeader current="connect" />
+
+  <main class="container wrap">
+    <section class="intro">
+      <p class="hand eyebrow">reach out —</p>
+      <h1>connect<span class="dot">.</span></h1>
+      <p class="lead">
+        Questions about a build, robotics, RPI, or just want to say hi? Any of these
+        reaches me — I read everything.
+      </p>
+    </section>
+
+    <ul class="channels">
+      {channels.map((c) => (
+        <li>
+          <a
+            class="channel"
+            href={c.href}
+            target={c.ext ? "_blank" : undefined}
+            rel={c.ext ? "noopener" : undefined}
+          >
+            <span class="channel__label mono">{c.label}</span>
+            <span class="channel__value">{c.value}</span>
+            <span class="channel__note">{c.note}</span>
+            <span class="channel__arrow" aria-hidden="true">{c.ext ? "↗" : "→"}</span>
+          </a>
+        </li>
+      ))}
+    </ul>
+
+    <p class="sign hand">— based in Queens, NY · soon Troy, NY</p>
+  </main>
+
+  <footer class="container foot">
+    <a href="/" class="mono">← back home</a>
+    <span class="mono">breadboard — built in the open</span>
+  </footer>
+</Base>
+
+<style>
+  .wrap { max-width: 720px; padding-top: 40px; padding-bottom: 100px; }
+
+  .intro { padding: clamp(30px, 6vw, 60px) 0 clamp(20px, 3vw, 32px); max-width: 44ch; }
+  .eyebrow { font-size: 1.4rem; margin: 0 0 4px; }
+  .intro h1 {
+    margin: 0 0 14px;
+    font-size: clamp(2.8rem, 8vw, 5rem);
+    font-weight: 600;
+    letter-spacing: -0.03em;
+    line-height: 0.95;
+  }
+  .intro h1 .dot { color: var(--amber); }
+  .lead { margin: 0; color: var(--ink-soft); font-size: 1.12rem; line-height: 1.6; }
+
+  .channels { list-style: none; margin: 8px 0 0; padding: 0; }
+  .channel {
+    position: relative;
+    display: block;
+    padding: 22px 46px 22px 0;
+    border-top: 1px dashed var(--line);
+    color: inherit;
+    text-decoration: none;
+  }
+  .channels li:last-child .channel { border-bottom: 1px dashed var(--line); }
+  .channel__label {
+    display: block;
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin-bottom: 6px;
+  }
+  .channel__value {
+    display: block;
+    font-family: var(--font-display);
+    font-size: clamp(1.5rem, 3.5vw, 2rem);
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+    transition: color 0.15s ease;
+  }
+  .channel__note { display: block; margin-top: 6px; color: var(--ink-soft); font-size: 0.95rem; }
+  .channel__arrow {
+    position: absolute;
+    right: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-family: var(--font-mono);
+    font-size: 1.2rem;
+    color: var(--ink-faint);
+    transition: color 0.15s ease, transform 0.15s ease;
+  }
+  .channel:hover .channel__value { color: var(--amber); }
+  .channel:hover .channel__arrow { color: var(--amber); transform: translateY(-50%) translateX(3px); }
+  .channel:focus-visible { outline: 2px solid var(--amber); outline-offset: 4px; border-radius: 6px; }
+
+  .sign { margin-top: 34px; color: var(--ink-faint); font-size: 1.25rem; }
+
+  .foot {
+    display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+    padding-top: 26px; padding-bottom: 40px;
+    border-top: 1px solid var(--line-soft);
+    color: var(--ink-faint); font-size: 0.9rem;
+  }
+  .foot a { color: var(--ink-faint); }
+  .foot a:hover { color: var(--amber); text-decoration: none; }
+</style>
