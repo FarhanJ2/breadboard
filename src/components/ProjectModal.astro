@@ -1,0 +1,187 @@
+---
+import { Image } from "astro:assets";
+import type { CollectionEntry } from "astro:content";
+
+interface Props {
+  project: CollectionEntry<"projects">;
+}
+const { project } = Astro.props;
+const d = project.data;
+const id = `pm-${project.id}`;
+const href = `/projects/${project.id}`;
+
+const statusLabel: Record<string, string> = {
+  shipped: "SHIPPED", active: "ACTIVE", research: "RESEARCH", archived: "ARCHIVED",
+};
+const ext = [
+  d.links.github && { label: "code", href: d.links.github },
+  d.links.docs && { label: "docs", href: d.links.docs },
+  d.links.demo && { label: "demo", href: d.links.demo },
+].filter(Boolean) as { label: string; href: string }[];
+---
+
+<dialog id={id} class="pmodal" data-status={d.status} aria-label={`${d.title} — quick look`}>
+  <div class="pmodal__inner">
+    <button class="pmodal__close" data-pm-close aria-label="Close quick look">
+      <span aria-hidden="true">×</span>
+    </button>
+
+    {d.cover && <Image src={d.cover} alt={d.coverAlt || d.title} class="pmodal__cover" />}
+
+    <div class="pmodal__body">
+      <p class="kicker mono">
+        <span class="led" aria-hidden="true"></span>{statusLabel[d.status]} · {d.codename} · {d.year}
+      </p>
+      <h2>{d.title}</h2>
+      <p class="blurb">{d.blurb}</p>
+
+      {d.stat && <p class="stat mono">{d.stat.label} <b>{d.stat.value}</b></p>}
+
+      {d.tech.length > 0 && (
+        <ul class="tech" aria-label="built with">
+          {d.tech.map((t) => <li class="mono">{t}</li>)}
+        </ul>
+      )}
+
+      <div class="pmodal__links">
+        <a href={href} class="full mono">read the full writeup <span aria-hidden="true">→</span></a>
+        {ext.map((l) => (
+          <a href={l.href} class="mono" target="_blank" rel="noopener">{l.label} <span aria-hidden="true">↗</span></a>
+        ))}
+      </div>
+    </div>
+  </div>
+</dialog>
+
+<style>
+  .pmodal {
+    width: min(520px, calc(100vw - 32px));
+    max-height: calc(100vh - 48px);
+    padding: 0;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: var(--bg-raise);
+    color: var(--ink);
+    overflow: hidden;
+    box-shadow: 0 30px 80px -20px rgba(0, 0, 0, 0.8);
+  }
+  .pmodal::backdrop {
+    background: rgba(6, 7, 11, 0.6);
+    backdrop-filter: blur(4px);
+  }
+  .pmodal[data-status="shipped"] { --st: var(--phosphor); }
+  .pmodal[data-status="active"] { --st: var(--amber); }
+  .pmodal[data-status="research"] { --st: var(--blueprint); }
+  .pmodal[data-status="archived"] { --st: var(--ink-faint); }
+
+  .pmodal__inner { position: relative; max-height: calc(100vh - 48px); overflow-y: auto; }
+
+  .pmodal__close {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    z-index: 2;
+    width: 32px;
+    height: 32px;
+    display: grid;
+    place-items: center;
+    font-size: 1.5rem;
+    line-height: 1;
+    color: var(--ink);
+    background: color-mix(in srgb, var(--bg) 55%, transparent);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    cursor: pointer;
+  }
+  .pmodal__close:hover { color: var(--amber); border-color: var(--amber); }
+
+  .pmodal__cover {
+    display: block;
+    width: 100%;
+    height: 190px;
+    object-fit: cover;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .pmodal__body { padding: 20px 22px 22px; }
+  .kicker {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-size: 11px; letter-spacing: 0.13em; color: var(--st); margin: 0 0 10px;
+  }
+  .led { width: 8px; height: 8px; border-radius: 50%; background: var(--st); box-shadow: 0 0 8px 0 var(--st); }
+  .pmodal__body h2 {
+    margin: 0 0 8px;
+    font-size: 1.7rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+  }
+  .blurb { margin: 0; color: var(--ink-soft); font-size: 1rem; line-height: 1.55; }
+  .stat {
+    display: inline-block; margin: 16px 0 0; padding: 5px 11px;
+    border: 1px solid var(--line); border-radius: 7px;
+    background: var(--bg-inset); color: var(--ink-soft);
+  }
+  .stat b { color: var(--phosphor); font-weight: 600; }
+
+  .tech { list-style: none; display: flex; flex-wrap: wrap; gap: 6px; margin: 16px 0 0; padding: 0; }
+  .tech li {
+    font-size: 10.5px; letter-spacing: 0.06em; color: var(--ink-soft);
+    border: 1px solid var(--line); border-radius: 5px; padding: 3px 7px 2px;
+  }
+
+  .pmodal__links {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px;
+    margin-top: 20px; padding-top: 16px; border-top: 1px dashed var(--line);
+  }
+  .pmodal__links a { font-size: 0.82rem; letter-spacing: 0.03em; color: var(--ink-soft); }
+  .pmodal__links a:hover { color: var(--amber); text-decoration: none; }
+  .pmodal__links a.full { color: var(--amber); margin-right: auto; }
+
+  /* open animation */
+  .pmodal[open] { animation: pm-in 0.22s cubic-bezier(0.2, 0.7, 0.2, 1); }
+  .pmodal[open]::backdrop { animation: pm-fade 0.22s ease; }
+  @keyframes pm-in {
+    from { opacity: 0; transform: translateY(8px) scale(0.98); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes pm-fade { from { opacity: 0; } to { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) {
+    .pmodal[open], .pmodal[open]::backdrop { animation: none; }
+  }
+</style>
+
+<script>
+  // One delegated handler for every project modal on the page (Astro dedupes this
+  // module script). Triggers are real links (data-pm-open) so no-JS falls back to
+  // navigating to the full writeup page.
+  if (!(window as any).__pmInit) {
+    (window as any).__pmInit = true;
+    const html = document.documentElement;
+
+    document.addEventListener("click", (e) => {
+      const target = e.target as HTMLElement;
+
+      const opener = target.closest<HTMLElement>("[data-pm-open]");
+      if (opener) {
+        const dlg = document.getElementById(opener.dataset.pmOpen!) as HTMLDialogElement | null;
+        if (dlg?.showModal) {
+          e.preventDefault();
+          dlg.showModal();
+          html.classList.add("pm-lock");
+          dlg.addEventListener("close", () => html.classList.remove("pm-lock"), { once: true });
+        }
+        return;
+      }
+
+      if (target.closest("[data-pm-close]")) {
+        target.closest("dialog")?.close();
+        return;
+      }
+
+      // click on the backdrop (event target is the dialog itself) closes it
+      if (target.nodeName === "DIALOG" && target.classList.contains("pmodal")) {
+        (target as HTMLDialogElement).close();
+      }
+    });
+  }
+</script>

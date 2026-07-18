@@ -1,0 +1,150 @@
+---
+import { getCollection, render } from "astro:content";
+import { Image } from "astro:assets";
+import Base from "../../layouts/Base.astro";
+import SiteHeader from "../../components/SiteHeader.astro";
+
+export async function getStaticPaths() {
+  const projects = await getCollection("projects");
+  return projects.map((p) => ({ params: { slug: p.id }, props: { project: p } }));
+}
+
+const { project } = Astro.props;
+const d = project.data;
+const { Content } = await render(project);
+
+const statusLabel: Record<string, string> = {
+  shipped: "SHIPPED", active: "ACTIVE", research: "RESEARCH", archived: "ARCHIVED",
+};
+const ext = [
+  d.links.github && { label: "code", href: d.links.github },
+  d.links.docs && { label: "docs", href: d.links.docs },
+  d.links.demo && { label: "demo", href: d.links.demo },
+].filter(Boolean) as { label: string; href: string }[];
+---
+
+<Base title={`${d.title} — Projects — Farhan Jamil`} description={d.blurb}>
+  <SiteHeader current="projects" />
+
+  <article class="pd container" data-status={d.status}>
+    <a href="/projects" class="back mono">← projects</a>
+
+    <header class="pd__head">
+      <p class="kicker mono">
+        <span class="led" aria-hidden="true"></span>{statusLabel[d.status]} · {d.codename} · {d.year}
+      </p>
+      <h1>{d.title}</h1>
+      <p class="lead">{d.blurb}</p>
+
+      <div class="meta">
+        {d.stat && <span class="stat mono">{d.stat.label} <b>{d.stat.value}</b></span>}
+        {ext.map((l) => (
+          <a class="mono extlink" href={l.href} target="_blank" rel="noopener">{l.label} <span aria-hidden="true">↗</span></a>
+        ))}
+      </div>
+
+      {d.tech.length > 0 && (
+        <ul class="tech" aria-label="built with">
+          {d.tech.map((t) => <li class="mono">{t}</li>)}
+        </ul>
+      )}
+    </header>
+
+    {d.cover && (
+      <Image src={d.cover} alt={d.coverAlt || d.title} class="cover" />
+    )}
+
+    <div class="prose">
+      <Content />
+    </div>
+  </article>
+
+  <footer class="container foot">
+    <a href="/projects" class="mono">← all projects</a>
+    <span class="mono">breadboard — built in the open</span>
+  </footer>
+</Base>
+
+<style>
+  .pd { max-width: 760px; padding-top: 34px; padding-bottom: 90px; }
+  .pd[data-status="shipped"] { --st: var(--phosphor); }
+  .pd[data-status="active"] { --st: var(--amber); }
+  .pd[data-status="research"] { --st: var(--blueprint); }
+  .pd[data-status="archived"] { --st: var(--ink-faint); }
+
+  .back { color: var(--ink-faint); font-size: 0.82rem; }
+  .back:hover { color: var(--amber); text-decoration: none; }
+
+  .pd__head { margin: 22px 0 28px; }
+  .kicker {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-size: 11px; letter-spacing: 0.13em; color: var(--st); margin: 0 0 12px;
+  }
+  .led { width: 8px; height: 8px; border-radius: 50%; background: var(--st); box-shadow: 0 0 8px 0 var(--st); }
+  .pd__head h1 {
+    margin: 0;
+    font-size: clamp(2.2rem, 5.5vw, 3.4rem);
+    font-weight: 600;
+    letter-spacing: -0.025em;
+    line-height: 1.02;
+  }
+  .lead { margin: 12px 0 0; color: var(--ink-soft); font-size: 1.15rem; line-height: 1.55; }
+
+  .meta { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 16px; margin-top: 18px; }
+  .stat {
+    padding: 5px 11px; border: 1px solid var(--line); border-radius: 7px;
+    background: var(--bg-raise); color: var(--ink-soft);
+  }
+  .stat b { color: var(--phosphor); font-weight: 600; }
+  .extlink { color: var(--ink-soft); font-size: 0.84rem; letter-spacing: 0.03em; }
+  .extlink:hover { color: var(--amber); text-decoration: none; }
+
+  .tech { list-style: none; display: flex; flex-wrap: wrap; gap: 6px; margin: 16px 0 0; padding: 0; }
+  .tech li {
+    font-size: 10.5px; letter-spacing: 0.06em; color: var(--ink-soft);
+    border: 1px solid var(--line); border-radius: 5px; padding: 3px 7px 2px;
+  }
+
+  .cover {
+    display: block;
+    width: 100%;
+    height: auto;
+    border-radius: 12px;
+    border: 1px solid var(--line);
+    margin: 4px 0 8px;
+  }
+
+  .prose { color: var(--ink-soft); font-size: 1.1rem; line-height: 1.7; margin-top: 26px; }
+  .prose :global(p) { margin: 0 0 1.2em; }
+  .prose :global(h2) { font-size: 1.5rem; color: var(--ink); margin: 1.7em 0 0.5em; }
+  .prose :global(ul) { margin: 0 0 1.2em; padding-left: 1.2em; }
+  .prose :global(li) { margin: 0.3em 0; }
+  .prose :global(a) { color: var(--amber); }
+  .prose :global(img) {
+    display: block;
+    width: 100%;
+    height: auto;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    margin: 1.6em 0;
+  }
+  .prose :global(code) {
+    font-family: var(--font-mono); font-size: 0.85em;
+    background: var(--bg-raise); border: 1px solid var(--line-soft);
+    padding: 1px 5px; border-radius: 4px;
+  }
+  .prose :global(blockquote) {
+    margin: 1.4em 0; padding: 2px 0 2px 18px;
+    border-left: 2px solid var(--line);
+    color: var(--ink-faint); font-style: italic;
+  }
+
+  .foot {
+    display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+    padding-top: 26px; padding-bottom: 40px;
+    border-top: 1px solid var(--line-soft);
+    color: var(--ink-faint); font-size: 0.9rem;
+  }
+  .foot a { color: var(--ink-faint); }
+  .foot a:hover { color: var(--amber); text-decoration: none; }
+</style>

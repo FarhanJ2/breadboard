@@ -1,0 +1,35 @@
+---
+import { getCollection } from "astro:content";
+import Base from "../../layouts/Base.astro";
+import PostCard from "../../components/PostCard.astro";
+
+const posts = (await getCollection("blog")).sort(
+  (a, b) => b.data.date.valueOf() - a.data.date.valueOf(),
+);
+---
+
+<Base title="Writing — Farhan Jamil">
+  <main class="container wrap">
+    <a href="/" class="back mono">← home</a>
+    <header class="head">
+      <p class="hand eyebrow">the full log —</p>
+      <h1>writing</h1>
+      <p class="sub">Build logs, technical write-ups, and the occasional postmortem.</p>
+    </header>
+
+    <div class="list">
+      {posts.map((post) => <PostCard post={post} />)}
+    </div>
+  </main>
+</Base>
+
+<style>
+  .wrap { max-width: 760px; padding-top: 40px; padding-bottom: 100px; }
+  .back { color: var(--ink-faint); font-size: 0.82rem; }
+  .back:hover { color: var(--amber); text-decoration: none; }
+  .head { margin: 26px 0 20px; }
+  .eyebrow { font-size: 1.4rem; margin: 0; }
+  .head h1 { font-size: clamp(2.4rem, 6vw, 3.4rem); font-weight: 600; letter-spacing: -0.02em; margin: 2px 0 8px; }
+  .sub { color: var(--ink-soft); margin: 0; }
+  .list { display: flex; flex-direction: column; }
+</style>

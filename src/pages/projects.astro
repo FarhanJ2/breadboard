@@ -1,0 +1,216 @@
+---
+import { getCollection } from "astro:content";
+import Base from "../layouts/Base.astro";
+import SiteHeader from "../components/SiteHeader.astro";
+import ProjectCard from "../components/ProjectCard.astro";
+import ProjectModal from "../components/ProjectModal.astro";
+
+const projects = (await getCollection("projects")).sort(
+  (a, b) => a.data.order - b.data.order,
+);
+const featured = projects.find((p) => p.data.featured) ?? projects[0];
+const robot = projects.filter((p) => p.data.category === "robot" && p.id !== featured.id);
+const tools = projects.filter((p) => p.data.category === "tools" && p.id !== featured.id);
+
+const f = featured.data;
+const fHref = `/projects/${featured.id}`;
+const statusLabel: Record<string, string> = {
+  shipped: "SHIPPED", active: "ACTIVE", research: "RESEARCH", archived: "ARCHIVED",
+};
+const fExt = [
+  f.links.github && { label: "code", href: f.links.github },
+  f.links.docs && { label: "docs", href: f.links.docs },
+  f.links.demo && { label: "demo", href: f.links.demo },
+].filter(Boolean) as { label: string; href: string }[];
+---
+
+<Base title="Projects — Farhan Jamil">
+  <SiteHeader current="projects" />
+
+  <main class="container wrap">
+    <section class="intro">
+      <p class="hand eyebrow">on the bench —</p>
+      <h1>projects<span class="dot">.</span></h1>
+      <p class="lead">
+        Robots, the tools around them, and a few research detours. Most started on
+        Steel Hawks; each one shipped something real, broke in an interesting way, or
+        both.
+      </p>
+    </section>
+
+    <!-- featured build -->
+    <article class="phero" data-status={f.status}>
+      <div class="phero__panel">
+        <div class="grid" aria-hidden="true"></div>
+        {f.stat && <span class="readout mono">{f.stat.label} <b>{f.stat.value}</b></span>}
+        <span class="phero__badge mono"><span class="led" aria-hidden="true"></span>{statusLabel[f.status]} · {f.year}</span>
+        <a href={fHref} data-pm-open={`pm-${featured.id}`} class="codename">{f.codename}</a>
+      </div>
+      <div class="phero__body">
+        <p class="phero__kicker mono">featured build</p>
+        <h2><a href={fHref} data-pm-open={`pm-${featured.id}`}>{f.title}</a></h2>
+        <p class="phero__blurb">{f.blurb}</p>
+        {f.tech.length > 0 && (
+          <ul class="tech" aria-label="built with">
+            {f.tech.map((t) => <li class="mono">{t}</li>)}
+          </ul>
+        )}
+        <div class="phero__links">
+          <a href={fHref} data-pm-open={`pm-${featured.id}`} class="mono">quick look <span aria-hidden="true">→</span></a>
+          {fExt.map((l) => (
+            <a href={l.href} class="mono" target="_blank" rel="noopener">{l.label} <span aria-hidden="true">↗</span></a>
+          ))}
+        </div>
+      </div>
+    </article>
+
+    <section class="group">
+      <h2 class="group__head hand">robot systems —</h2>
+      <div class="pgrid">
+        {robot.map((p) => <ProjectCard project={p} />)}
+      </div>
+    </section>
+
+    <section class="group">
+      <h2 class="group__head hand">tools &amp; research —</h2>
+      <div class="pgrid">
+        {tools.map((p) => <ProjectCard project={p} />)}
+      </div>
+    </section>
+  </main>
+
+  <footer class="container foot">
+    <a href="/" class="mono">← back home</a>
+    <span class="mono">breadboard — built in the open</span>
+  </footer>
+
+  {projects.map((p) => <ProjectModal project={p} />)}
+</Base>
+
+<style>
+  /* --- intro --- */
+  .wrap { padding-bottom: 90px; }
+  .intro { padding: clamp(30px, 6vw, 60px) 0 clamp(28px, 4vw, 44px); max-width: 46ch; }
+  .eyebrow { font-size: 1.4rem; margin: 0 0 4px; }
+  .intro h1 {
+    margin: 0 0 14px;
+    font-size: clamp(2.8rem, 8vw, 5rem);
+    font-weight: 600;
+    letter-spacing: -0.03em;
+    line-height: 0.95;
+  }
+  .intro h1 .dot { color: var(--amber); }
+  .lead { margin: 0; color: var(--ink-soft); font-size: 1.12rem; line-height: 1.6; }
+
+  /* --- featured build hero --- */
+  .phero {
+    display: grid;
+    grid-template-columns: 1.1fr 1fr;
+    gap: clamp(20px, 3vw, 36px);
+    align-items: stretch;
+    background: var(--bg-raise);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 18px;
+    margin-bottom: clamp(40px, 6vw, 64px);
+  }
+  .phero[data-status="shipped"] { --st: var(--phosphor); }
+  .phero[data-status="active"] { --st: var(--amber); }
+  .phero[data-status="research"] { --st: var(--blueprint); }
+  .phero[data-status="archived"] { --st: var(--ink-faint); }
+
+  .phero__panel {
+    position: relative;
+    min-height: 260px;
+    border-radius: 11px;
+    background: var(--bg-inset);
+    border: 1px solid var(--line-soft);
+    overflow: hidden;
+  }
+  .phero__panel .grid {
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(120, 150, 230, 0.06) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(120, 150, 230, 0.06) 1px, transparent 1px);
+    background-size: 26px 26px;
+    mask-image: radial-gradient(130% 90% at 30% 35%, #000 40%, transparent 92%);
+  }
+  .readout { position: absolute; top: 14px; right: 16px; color: var(--ink-faint); }
+  .readout b { color: var(--phosphor); font-weight: 600; }
+  .phero__badge {
+    position: absolute;
+    top: 14px;
+    left: 16px;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    color: var(--st);
+  }
+  .led {
+    width: 8px; height: 8px; border-radius: 50%; flex: none;
+    background: var(--st); box-shadow: 0 0 8px 0 var(--st);
+  }
+  .codename {
+    position: absolute;
+    left: 20px;
+    bottom: 16px;
+    font-family: var(--font-mono);
+    font-weight: 600;
+    font-size: clamp(1.8rem, 4vw, 2.6rem);
+    letter-spacing: -0.01em;
+    color: var(--ink);
+    text-decoration: none;
+    text-shadow: 0 2px 20px rgba(0, 0, 0, 0.6);
+  }
+  .codename:hover { color: var(--amber); text-decoration: none; }
+
+  .phero__body { display: flex; flex-direction: column; padding: 8px 10px 8px 0; }
+  .phero__kicker { color: var(--ink-faint); letter-spacing: 0.14em; margin: 4px 0 10px; }
+  .phero__body h2 {
+    margin: 0 0 10px;
+    font-size: clamp(1.7rem, 3vw, 2.4rem);
+    font-weight: 600;
+    letter-spacing: -0.015em;
+  }
+  .phero__body h2 a { color: inherit; }
+  .phero__body h2 a:hover { color: var(--amber); text-decoration: none; }
+  .phero__blurb { margin: 0; color: var(--ink-soft); font-size: 1.05rem; line-height: 1.55; }
+
+  .tech { list-style: none; display: flex; flex-wrap: wrap; gap: 6px; margin: 16px 0 0; padding: 0; }
+  .tech li {
+    font-size: 10.5px; letter-spacing: 0.06em; color: var(--ink-soft);
+    border: 1px solid var(--line); border-radius: 5px; padding: 3px 7px 2px;
+  }
+  .phero__links {
+    display: flex; flex-wrap: wrap; gap: 6px 18px;
+    margin-top: auto; padding-top: 16px;
+  }
+  .phero__links a { font-size: 0.82rem; letter-spacing: 0.03em; color: var(--ink-soft); }
+  .phero__links a:hover { color: var(--amber); text-decoration: none; }
+
+  /* --- groups --- */
+  .group { margin-bottom: clamp(34px, 5vw, 54px); }
+  .group__head { font-size: 1.55rem; color: var(--amber); margin: 0 0 16px; }
+  .pgrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+    gap: 16px;
+  }
+
+  .foot {
+    display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+    padding-top: 26px; padding-bottom: 40px;
+    border-top: 1px solid var(--line-soft);
+    color: var(--ink-faint); font-size: 0.9rem;
+  }
+  .foot a { color: var(--ink-faint); }
+  .foot a:hover { color: var(--amber); text-decoration: none; }
+
+  @media (max-width: 720px) {
+    .phero { grid-template-columns: 1fr; }
+    .phero__body { padding: 4px 6px 6px; }
+  }
+</style>

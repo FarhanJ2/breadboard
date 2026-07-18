@@ -1,0 +1,119 @@
+:root {
+  /* --- surfaces --- */
+  --bg: #0b0d12;
+  --bg-raise: #11141c;
+  --bg-inset: #0d1017;
+  --line: #232838;
+  --line-soft: #1a1e29;
+
+  /* --- text --- */
+  --ink: #e8e6e1;
+  --ink-soft: #a9a7a0;
+  --ink-faint: #6f7382;
+
+  /* --- accents (each has a job) --- */
+  --amber: #ffb454;        /* primary accent / links / "currently" */
+  --blueprint: hsl(224 65% 72%); /* structure, WRITEUP */
+  --wire: hsl(268 60% 70%);      /* ambient, POSTMORTEM */
+  --phosphor: #7ee0a8;     /* telemetry values, LOG */
+  --rust: #e08a6a;         /* postmortem accent */
+
+  /* --- type --- */
+  --font-display: "Fraunces", Georgia, serif;
+  --font-body: "Newsreader", Georgia, serif;
+  --font-hand: "Caveat", ui-rounded, cursive;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+  --maxw: 1180px;
+}
+
+* { box-sizing: border-box; }
+
+html { color-scheme: dark; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 18px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow-x: clip; /* safety: no horizontal scroll from ambient/margin art */
+}
+
+/* a faint radial warmth so the flat black has some depth */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  background:
+    radial-gradient(120% 80% at 15% -5%, rgba(255, 180, 84, 0.05), transparent 55%),
+    radial-gradient(90% 70% at 100% 100%, rgba(138, 120, 255, 0.06), transparent 60%);
+  pointer-events: none;
+}
+
+a { color: var(--amber); text-decoration: none; }
+a:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+h1, h2, h3 { font-family: var(--font-display); font-weight: 500; line-height: 1.05; }
+
+.container {
+  max-width: var(--maxw);
+  margin: 0 auto;
+  padding-inline: clamp(20px, 5vw, 48px);
+}
+
+/* --- handwritten eyebrow --- */
+.hand {
+  font-family: var(--font-hand);
+  color: var(--amber);
+}
+
+/* --- mono utility --- */
+.mono {
+  font-family: var(--font-mono);
+  font-size: 0.72em;
+  letter-spacing: 0.02em;
+}
+
+/* --- tag chips --- */
+.tag {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  padding: 3px 8px 2px;
+  border-radius: 5px;
+  border: 1px solid currentColor;
+  line-height: 1;
+  white-space: nowrap;
+}
+.tag[data-tag="WRITEUP"] { color: var(--blueprint); }
+.tag[data-tag="POSTMORTEM"] { color: var(--rust); }
+.tag[data-tag="LOG"] { color: var(--phosphor); }
+
+.badge {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  padding: 3px 8px 2px;
+  border-radius: 5px;
+  line-height: 1;
+  white-space: nowrap;
+}
+.badge--fresh { color: var(--amber); border: 1px solid var(--amber); }
+.badge--pinned { color: var(--ink-faint); border: 1px dashed var(--ink-faint); }
+
+/* accessible focus */
+:focus-visible { outline: 2px solid var(--amber); outline-offset: 3px; border-radius: 4px; }
+
+/* lock background scroll while a project quick-look dialog is open */
+.pm-lock { overflow: hidden; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; }
+}

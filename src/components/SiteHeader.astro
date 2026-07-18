@@ -1,0 +1,67 @@
+---
+/** Persistent site header used on inner pages (index has its own brand-reveal one). */
+interface Props {
+  current?: "writing" | "projects";
+}
+const { current } = Astro.props;
+---
+
+<header class="topbar">
+  <div class="topbar__inner container">
+    <a href="/" class="mark" aria-label="Farhan Jamil — home">
+      <span class="mark__chip">fj</span>
+      <span class="mark__name">farhan jamil<span class="dot">.</span></span>
+    </a>
+    <nav class="nav">
+      <a href="/blog" aria-current={current === "writing" ? "page" : undefined}>writing</a>
+      <a href="/projects" aria-current={current === "projects" ? "page" : undefined}>projects</a>
+      <a href="mailto:hello@farhanj2.dev">connect</a>
+    </nav>
+  </div>
+</header>
+
+<style>
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    background: color-mix(in srgb, var(--bg) 80%, transparent);
+    backdrop-filter: blur(10px) saturate(1.1);
+    -webkit-backdrop-filter: blur(10px) saturate(1.1);
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .topbar__inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px 20px;
+    flex-wrap: wrap;
+    padding-top: 14px;
+    padding-bottom: 14px;
+  }
+  .mark { display: flex; align-items: center; text-decoration: none; }
+  .mark:hover { text-decoration: none; }
+  .mark__chip {
+    font-family: var(--font-mono);
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: var(--bg);
+    background: var(--amber);
+    padding: 5px 9px;
+    border-radius: 7px;
+    flex: none;
+  }
+  .mark__name {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 1.2rem;
+    letter-spacing: -0.02em;
+    color: var(--ink);
+    margin-left: 11px;
+  }
+  .mark__name .dot { color: var(--amber); }
+  .nav { display: flex; gap: clamp(18px, 3vw, 34px); }
+  .nav a { font-family: var(--font-hand); font-size: 1.35rem; color: var(--ink-soft); }
+  .nav a:hover,
+  .nav a[aria-current="page"] { color: var(--amber); text-decoration: none; }
+</style>

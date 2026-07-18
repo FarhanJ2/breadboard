@@ -1,0 +1,207 @@
+---
+import type { CollectionEntry } from "astro:content";
+
+interface Props {
+  post: CollectionEntry<"blog">;
+  variant?: "featured" | "compact";
+}
+const { post, variant = "compact" } = Astro.props;
+const { title, codename, date, tags, teaser, stat, readMins, freshInk, pinned } = post.data;
+const href = `/blog/${post.id}`;
+
+// "jul '26"
+const months = ["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"];
+const dateLabel = `${months[date.getMonth()]} '${String(date.getFullYear()).slice(2)}`;
+---
+
+{variant === "featured" ? (
+  <article class="card feat">
+    <span class="tape" aria-hidden="true"></span>
+
+    <div class="feat__meta">
+      <div class="chips">
+        {freshInk && <span class="badge badge--fresh">JUST SHIPPED</span>}
+        {tags.map((t) => <span class="tag" data-tag={t}>{t}</span>)}
+      </div>
+      <span class="mono date">{dateLabel}</span>
+    </div>
+
+    <a href={href} class="feat__titlelink"><h2 class="feat__title">{title}</h2></a>
+
+    <a href={href} class="feat__visual" aria-label={`Read: ${title}`}>
+      <div class="grid" aria-hidden="true"></div>
+      {stat && (
+        <span class="readout mono" aria-hidden="true">
+          {stat.label} <b>{stat.value}</b>
+        </span>
+      )}
+      {codename && <span class="codename">{codename}</span>}
+    </a>
+
+    <p class="feat__teaser" data-firstletter={teaser.charAt(0)}>{teaser.slice(1)}</p>
+
+    <div class="feat__foot">
+      {readMins && <span class="hand">~ {readMins} min read</span>}
+      <a href={href} class="more">read the log <span aria-hidden="true">→</span></a>
+    </div>
+  </article>
+) : (
+  <a href={href} class="card compact">
+    <h3 class="compact__title">{title}</h3>
+    <div class="compact__meta">
+      {pinned && <span class="badge badge--pinned">PINNED</span>}
+      {tags.map((t) => <span class="tag" data-tag={t}>{t}</span>)}
+      <span class="mono">{dateLabel}</span>
+      {readMins && <span class="mono dim">~ {readMins} min</span>}
+      {stat && <span class="mono stat">{stat.label} <b>{stat.value}</b></span>}
+    </div>
+  </a>
+)}
+
+<style>
+  .card {
+    position: relative;
+    display: block;
+    background: var(--bg-raise);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+  }
+
+  /* --- washi tape corner (sketchbook signature) --- */
+  .tape {
+    position: absolute;
+    top: -11px;
+    left: 34px;
+    width: 74px;
+    height: 22px;
+    transform: rotate(-4deg);
+    background: repeating-linear-gradient(
+      -45deg,
+      rgba(255, 180, 84, 0.16) 0 6px,
+      rgba(255, 180, 84, 0.06) 6px 12px
+    );
+    border: 1px solid rgba(255, 180, 84, 0.14);
+    border-radius: 2px;
+  }
+
+  /* ===================== FEATURED ===================== */
+  .feat { padding: 26px 26px 22px; }
+  .feat__meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px 12px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+  }
+  .chips { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .date { color: var(--ink-faint); }
+
+  .feat__titlelink { color: inherit; }
+  .feat__titlelink:hover { text-decoration: none; }
+  .feat__title {
+    margin: 0 0 18px;
+    font-size: clamp(1.9rem, 3.6vw, 2.9rem);
+    font-optical-sizing: auto;
+    letter-spacing: -0.015em;
+  }
+  .feat__titlelink:hover .feat__title { color: var(--amber); }
+
+  .feat__visual {
+    position: relative;
+    display: block;
+    height: 230px;
+    border-radius: 10px;
+    background: var(--bg-inset);
+    border: 1px solid var(--line-soft);
+    overflow: hidden;
+  }
+  .feat__visual .grid {
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(120, 150, 230, 0.06) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(120, 150, 230, 0.06) 1px, transparent 1px);
+    background-size: 26px 26px;
+    mask-image: radial-gradient(120% 90% at 30% 40%, #000 40%, transparent 90%);
+  }
+  .readout {
+    position: absolute;
+    top: 14px;
+    right: 16px;
+    color: var(--ink-faint);
+    letter-spacing: 0.02em;
+  }
+  .readout b { color: var(--phosphor); font-weight: 600; }
+  .codename {
+    position: absolute;
+    left: 22px;
+    bottom: 16px;
+    font-family: var(--font-mono);
+    font-weight: 600;
+    font-size: clamp(1.8rem, 4vw, 2.6rem);
+    letter-spacing: -0.01em;
+    color: var(--ink);
+    text-shadow: 0 2px 20px rgba(0, 0, 0, 0.6);
+  }
+
+  .feat__teaser {
+    margin: 18px 0 20px;
+    color: var(--ink-soft);
+    font-size: 1.06rem;
+    line-height: 1.55;
+  }
+  .feat__teaser::first-letter { /* fallback */ font-weight: 500; }
+  .feat__teaser[data-firstletter]::before {
+    content: attr(data-firstletter);
+    float: left;
+    font-family: var(--font-display);
+    font-size: 3.1rem;
+    line-height: 0.8;
+    padding: 6px 10px 0 0;
+    color: var(--amber);
+  }
+
+  .feat__foot {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    border-top: 1px dashed var(--line);
+    padding-top: 14px;
+  }
+  .feat__foot .hand { font-size: 1.15rem; color: var(--ink-faint); }
+  .more { font-family: var(--font-mono); font-size: 0.82rem; letter-spacing: 0.04em; }
+
+  /* ===================== COMPACT ===================== */
+  .compact {
+    padding: 15px 16px 14px;
+    background: transparent;
+    border: 1px solid transparent;
+    border-bottom: 1px dashed var(--line);
+    border-radius: 8px;
+    transition: background 0.15s ease, border-color 0.15s ease;
+  }
+  .compact:hover {
+    background: var(--bg-raise);
+    border-color: var(--line);
+    text-decoration: none;
+  }
+  .compact__title {
+    margin: 0 0 9px;
+    font-size: 1.28rem;
+    font-weight: 500;
+    color: var(--ink);
+    letter-spacing: -0.01em;
+  }
+  .compact:hover .compact__title { color: var(--amber); }
+  .compact__meta {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    color: var(--ink-faint);
+  }
+  .compact__meta .dim { opacity: 0.75; }
+  .compact__meta .stat { margin-left: auto; color: var(--ink-soft); }
+  .compact__meta .stat b { color: var(--phosphor); font-weight: 600; }
+</style>

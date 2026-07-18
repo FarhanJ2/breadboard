@@ -1,0 +1,170 @@
+---
+import type { CollectionEntry } from "astro:content";
+
+interface Props {
+  project: CollectionEntry<"projects">;
+  variant?: "grid" | "mini";
+}
+const { project, variant = "grid" } = Astro.props;
+const { title, codename, blurb, year, status, tech, stat, links } = project.data;
+const href = `/projects/${project.id}`;
+const modal = `pm-${project.id}`;
+
+const statusLabel: Record<string, string> = {
+  shipped: "SHIPPED",
+  active: "ACTIVE",
+  research: "RESEARCH",
+  archived: "ARCHIVED",
+};
+
+// external links only — the project's own writeup is the card itself (/projects/<slug>)
+const linkList: { label: string; href: string }[] = [
+  links.github && { label: "code", href: links.github },
+  links.docs && { label: "docs", href: links.docs },
+  links.demo && { label: "demo", href: links.demo },
+].filter(Boolean) as { label: string; href: string }[];
+---
+
+<article class={`pcard pcard--${variant}`} data-status={status}>
+  <div class="pcard__head">
+    <span class="led" aria-hidden="true"></span>
+    <span class="status mono">{statusLabel[status]}</span>
+    <span class="codename mono">{codename}</span>
+    <span class="year mono">{year}</span>
+  </div>
+
+  <h3 class="pcard__title">
+    {variant === "grid" ? <a href={href} data-pm-open={modal}>{title}</a> : title}
+  </h3>
+  <p class="pcard__blurb">{blurb}</p>
+
+  {variant === "grid" && (
+    <>
+      {stat && (
+        <p class="pcard__stat mono">{stat.label} <b>{stat.value}</b></p>
+      )}
+      {tech.length > 0 && (
+        <ul class="tech" aria-label="built with">
+          {tech.map((t) => <li class="mono">{t}</li>)}
+        </ul>
+      )}
+      <div class="pcard__links">
+        <a href={href} data-pm-open={modal} class="mono open">quick look <span aria-hidden="true">→</span></a>
+        {linkList.map((l) => (
+          <a href={l.href} class="mono" target="_blank" rel="noopener">
+            {l.label} <span aria-hidden="true">↗</span>
+          </a>
+        ))}
+      </div>
+    </>
+  )}
+
+  {variant === "mini" && stat && (
+    <p class="pcard__stat mono">{stat.label} <b>{stat.value}</b></p>
+  )}
+</article>
+
+<style>
+  .pcard {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-raise);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 18px 18px 16px;
+  }
+
+  .pcard__head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    color: var(--ink-faint);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+  }
+  .led {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex: none;
+    background: var(--st);
+    box-shadow: 0 0 8px 0 var(--st);
+  }
+  .status { color: var(--st); }
+  .codename { color: var(--ink-soft); }
+  .year { margin-left: auto; opacity: 0.8; }
+
+  /* status → color */
+  .pcard[data-status="shipped"] { --st: var(--phosphor); }
+  .pcard[data-status="active"] { --st: var(--amber); }
+  .pcard[data-status="research"] { --st: var(--blueprint); }
+  .pcard[data-status="archived"] { --st: var(--ink-faint); }
+
+  .pcard__title {
+    margin: 0 0 6px;
+    font-size: 1.35rem;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+  }
+  .pcard__title a { color: inherit; }
+  .pcard__title a:hover { color: var(--amber); text-decoration: none; }
+  .pcard__blurb {
+    margin: 0;
+    color: var(--ink-soft);
+    font-size: 0.98rem;
+    line-height: 1.5;
+  }
+
+  .pcard__stat {
+    margin: 14px 0 0;
+    color: var(--ink-faint);
+  }
+  .pcard__stat b { color: var(--phosphor); font-weight: 600; }
+
+  .tech {
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 14px 0 0;
+    padding: 0;
+  }
+  .tech li {
+    font-size: 10.5px;
+    letter-spacing: 0.06em;
+    color: var(--ink-soft);
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    padding: 3px 7px 2px;
+  }
+
+  .pcard__links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 16px;
+    margin-top: 16px;
+    padding-top: 14px;
+    border-top: 1px dashed var(--line);
+  }
+  .pcard__links a {
+    font-size: 0.78rem;
+    letter-spacing: 0.03em;
+    color: var(--ink-soft);
+  }
+  .pcard__links a:hover { color: var(--amber); text-decoration: none; }
+  .pcard__links a.open { color: var(--amber); margin-right: auto; }
+
+  /* mini (landing strip) is tighter */
+  .pcard--mini { padding: 16px; }
+  .pcard--mini .pcard__title { font-size: 1.15rem; }
+  .pcard--mini .pcard__blurb {
+    font-size: 0.92rem;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+</style>

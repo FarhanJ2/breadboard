@@ -1,0 +1,66 @@
+---
+/**
+ * StatusLine — the "currently — x · y · z" line under the name.
+ * Reads live-maintained, not a frozen bio: a pulsing dot + hand-lettered label.
+ */
+interface Props {
+  items: string[];
+}
+const { items } = Astro.props;
+---
+
+<p class="status">
+  <span class="dot" aria-hidden="true"></span>
+  <span class="label">currently</span>
+  <span class="dash" aria-hidden="true">—</span>
+  <span class="items">
+    {items.map((item, i) => (
+      <>
+        {i > 0 && <span class="sep" aria-hidden="true">·</span>}
+        <span class="item">{item}</span>
+      </>
+    ))}
+  </span>
+</p>
+
+<style>
+  .status {
+    margin: 0;
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 0.1em 0.55em;
+    font-family: var(--font-body);
+    font-size: 1.05rem;
+    color: var(--ink-soft);
+  }
+  .dot {
+    align-self: center;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--amber);
+    box-shadow: 0 0 0 0 rgba(255, 180, 84, 0.5);
+    animation: pulse 2.4s ease-out infinite;
+  }
+  .label {
+    font-family: var(--font-hand);
+    font-size: 1.5rem;
+    color: var(--amber);
+  }
+  .dash { color: var(--ink-faint); }
+  .items {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.1em 0.55em;
+  }
+  .item { font-style: italic; }
+  .sep { color: var(--ink-faint); }
+
+  @keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(255, 180, 84, 0.45); }
+    70% { box-shadow: 0 0 0 7px rgba(255, 180, 84, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(255, 180, 84, 0); }
+  }
+</style>

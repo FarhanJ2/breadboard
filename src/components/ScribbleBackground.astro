@@ -1,0 +1,306 @@
+---
+/**
+ * ScribbleBackground
+ * -------------------
+ * An ambient, hand-drawn-feeling SVG background: engineering/robotics sketches
+ * that draw themselves in via stroke-dashoffset, hold, erase, and cycle — as if
+ * one pen keeps redrawing the same corner of a workbench notebook.
+ *
+ * - Ambient scribbles (corners / wiring) draw once on load and persist, faint.
+ * - The "feature" cluster cycles through: turret rig -> Pico + LED strip -> swerve module.
+ * - Handwritten annotations reveal with a left->right wipe (writing, not fading).
+ * - Respects prefers-reduced-motion (static, no cycling).
+ *
+ * Isolated + reusable: renders fixed behind content, aria-hidden, pointer-events:none.
+ * All repetitive geometry is generated below so the markup stays readable and tunable.
+ */
+
+interface Props {
+  /** Seconds each feature sketch stays fully drawn before erasing. */
+  hold?: number;
+  /** Extra class for positioning / opacity overrides from a host layout. */
+  class?: string;
+}
+const { hold = 4.5, class: className = "" } = Astro.props;
+
+// --- small geometry helpers (run at build time) ---------------------------
+const rad = (deg: number) => (deg * Math.PI) / 180;
+const pt = (cx: number, cy: number, r: number, deg: number) =>
+  [cx + r * Math.cos(rad(deg)), cy + r * Math.sin(rad(deg))] as const;
+const f = (n: number) => Math.round(n * 100) / 100;
+
+// Radial ticks (gear teeth, wheel tread, reticle marks)
+function ticks(cx: number, cy: number, rInner: number, rOuter: number, count: number, offset = 0) {
+  return Array.from({ length: count }, (_, i) => {
+    const a = offset + (360 / count) * i;
+    const [x1, y1] = pt(cx, cy, rInner, a);
+    const [x2, y2] = pt(cx, cy, rOuter, a);
+    return { x1: f(x1), y1: f(y1), x2: f(x2), y2: f(y2) };
+  });
+}
+
+// Turret gear teeth + reticle marks
+const gearTeeth = ticks(250, 400, 34, 44, 12);
+const reticleMarks = ticks(560, 190, 14, 24, 4, 0).concat(ticks(560, 190, 14, 24, 4, 45));
+
+// PCB solder-dot grid
+const dotGrid: { x: number; y: number }[] = [];
+for (let r = 0; r < 4; r++) for (let c = 0; c < 7; c++) dotGrid.push({ x: 175 + c * 38, y: 325 + r * 42 });
+
+// LED strip cells (HawkLights)
+const leds = Array.from({ length: 6 }, (_, i) => ({ x: 160 + i * 44, y: 512 }));
+
+// Swerve wheel tread ticks
+const tread = ticks(250, 470, 52, 70, 20);
+---
+
+<div class={`scribble-bg ${className}`} aria-hidden="true">
+  <svg viewBox="0 0 1440 900" preserveAspectRatio="xMidYMid slice" fill="none">
+    <defs>
+      <!-- organic wobble so straight geometry reads as hand-drawn -->
+      <filter id="sb-rough" x="-5%" y="-5%" width="110%" height="110%">
+        <feTurbulence type="fractalNoise" baseFrequency="0.022 0.018" numOctaves="2" seed="7" result="n" />
+        <feDisplacementMap in="SourceGraphic" in2="n" scale="5.5" xChannelSelector="R" yChannelSelector="G" />
+      </filter>
+    </defs>
+
+    <g filter="url(#sb-rough)">
+      <!-- ================= AMBIENT (draws once, persists) ================= -->
+      <g class="scribble-set ambient" data-set="ambient">
+        <!-- one loose wire hugging the far-right edge -->
+        <path class="ink wire" pathLength="1"
+          d="M1418 90 C 1360 220, 1408 340, 1380 470 S 1360 700, 1400 820" />
+        <!-- bottom-left: coordinate frame + april-tag (vision / pose estimator) -->
+        <g class="ink wire">
+          <rect class="ink wire" pathLength="1" x="70" y="740" width="70" height="70" rx="4" />
+          <path class="ink wire" pathLength="1" d="M86 756 h38 v38 h-38 z M100 756 v38 M86 774 h38" />
+          <line class="ink wire" pathLength="1" x1="185" y1="805" x2="185" y2="735" />
+          <line class="ink wire" pathLength="1" x1="185" y1="805" x2="255" y2="805" />
+          <path class="ink wire" pathLength="1" d="M185 735 l-6 12 M185 735 l6 12 M255 805 l-12 -6 M255 805 l-12 6" />
+        </g>
+      </g>
+
+      <!-- ================= FEATURE 0 — TURRET / TARGETING ================= -->
+      <!-- top-right margin -->
+      <g class="scribble-set feature" data-set="turret" transform="translate(957 74) scale(0.62)">
+        <ellipse class="ink" pathLength="1" cx="250" cy="432" rx="112" ry="40" />
+        <path class="ink" pathLength="1" d="M138 432 v34 a112 40 0 0 0 224 0 v-34" />
+        <circle class="ink" pathLength="1" cx="250" cy="400" r="34" />
+        {gearTeeth.map((t) => <line class="ink" pathLength="1" x1={t.x1} y1={t.y1} x2={t.x2} y2={t.y2} />)}
+        <!-- barrel toward target -->
+        <line class="ink" pathLength="1" x1="272" y1="384" x2="486" y2="286" />
+        <line class="ink" pathLength="1" x1="262" y1="368" x2="476" y2="270" />
+        <line class="ink" pathLength="1" x1="476" y1="270" x2="486" y2="286" />
+        <!-- trajectory -->
+        <path class="ink faint" pathLength="1" d="M486 280 C 520 236, 540 210, 560 190" />
+        <!-- reticle -->
+        <circle class="ink" pathLength="1" cx="560" cy="190" r="22" />
+        {reticleMarks.map((t) => <line class="ink" pathLength="1" x1={t.x1} y1={t.y1} x2={t.x2} y2={t.y2} />)}
+        <text class="note" x="300" y="560">turret · vision-locked</text>
+        <text class="note small" x="486" y="150">θ 34.6°/360</text>
+      </g>
+
+      <!-- ================= FEATURE 1 — PICO + WS2812B (HawkLights) ======== -->
+      <!-- bottom-right margin -->
+      <g class="scribble-set feature" data-set="pcb" transform="translate(984 319) scale(0.7)" hidden>
+        <rect class="ink" pathLength="1" x="150" y="300" width="256" height="180" rx="10" />
+        {dotGrid.map((d) => <circle class="ink faint" pathLength="1" cx={d.x} cy={d.y} r="2.4" />)}
+        <!-- Pico footprint -->
+        <rect class="ink" pathLength="1" x="176" y="326" width="80" height="46" rx="4" />
+        {Array.from({ length: 5 }).map((_, i) => (
+          <line class="ink faint" pathLength="1" x1={186 + i * 15} y1="326" x2={186 + i * 15} y2="318" />
+        ))}
+        <!-- traces -->
+        <path class="ink" pathLength="1" d="M256 349 h44 v40 M366 325 v52 h-40" />
+        <!-- LED strip -->
+        {leds.map((l) => (
+          <rect class="ink" pathLength="1" x={l.x} y={l.y} width="30" height="30" rx="3" />
+        ))}
+        {leds.map((l) => (
+          <path class="ink faint" pathLength="1"
+            d={`M${l.x + 15} ${l.y - 6} v-8 M${l.x + 3} ${l.y - 3} l-6 -6 M${l.x + 27} ${l.y - 3} l6 -6`} />
+        ))}
+        <text class="note" x="150" y="590">HawkLights</text>
+        <text class="note small" x="150" y="618">Pico · WS2812B ×72</text>
+      </g>
+
+      <!-- ================= FEATURE 2 — SWERVE MODULE ====================== -->
+      <!-- left margin, mid -->
+      <g class="scribble-set feature" data-set="swerve" transform="translate(11 142) scale(0.72)" hidden>
+        <circle class="ink" pathLength="1" cx="250" cy="470" r="70" />
+        <circle class="ink faint" pathLength="1" cx="250" cy="470" r="52" />
+        {tread.map((t) => <line class="ink faint" pathLength="1" x1={t.x1} y1={t.y1} x2={t.x2} y2={t.y2} />)}
+        <!-- fork + top plate -->
+        <line class="ink" pathLength="1" x1="180" y1="470" x2="180" y2="360" />
+        <line class="ink" pathLength="1" x1="320" y1="470" x2="320" y2="360" />
+        <rect class="ink" pathLength="1" x="168" y="330" width="164" height="34" rx="6" />
+        <!-- motor -->
+        <ellipse class="ink" pathLength="1" cx="250" cy="316" rx="34" ry="12" />
+        <path class="ink" pathLength="1" d="M216 316 v-40 a34 12 0 0 0 68 0 v40" />
+        <!-- side gear -->
+        <circle class="ink faint" pathLength="1" cx="336" cy="440" r="20" />
+        {ticks(336, 440, 20, 27, 9).map((t) => <line class="ink faint" pathLength="1" x1={t.x1} y1={t.y1} x2={t.x2} y2={t.y2} />)}
+        <text class="note" x="200" y="580">swerve module</text>
+        <text class="note small" x="200" y="608">azimuth + drive</text>
+      </g>
+    </g>
+  </svg>
+</div>
+
+<style define:vars={{ hold: `${hold}s` }}>
+  .scribble-bg {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    overflow: hidden;
+  }
+  .scribble-bg svg {
+    width: 100%;
+    height: 100%;
+  }
+
+  .ink {
+    fill: none;
+    stroke: var(--sb-ink, hsl(224 65% 72%));
+    stroke-width: 1.6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-opacity: 0.32;
+    vector-effect: non-scaling-stroke;
+    /* draw-in setup — pathLength="1" normalizes every shape's length to 1 */
+    stroke-dasharray: 1;
+    stroke-dashoffset: 1;
+  }
+  .ink.faint { stroke-opacity: 0.16; }
+  .wire {
+    stroke: var(--sb-wire, hsl(268 60% 70%));
+    stroke-opacity: 0.14;
+  }
+
+  .note {
+    font-family: "Caveat", "Comic Sans MS", cursive;
+    font-size: 26px;
+    fill: var(--sb-amber, #ffb454);
+    fill-opacity: 0.55;
+    /* writing reveal — wipe left to right */
+    clip-path: inset(0 100% 0 0);
+  }
+  .note.small { font-size: 20px; fill-opacity: 0.45; }
+
+  /* static fully-drawn (reduced-motion + ?freeze dev hook) */
+  .scribble-set.drawn .ink { stroke-dashoffset: 0; }
+  .scribble-set.drawn .note { clip-path: inset(0 0 0 0); }
+
+  /* --- lifecycle: JS toggles .drawing / .erasing on a set --- */
+  .scribble-set.drawing .ink {
+    animation: sb-draw 1.6s ease forwards;
+    animation-delay: calc(var(--i, 0) * 55ms);
+  }
+  .scribble-set.drawing .note {
+    animation: sb-write 0.9s ease forwards;
+    animation-delay: calc(var(--i, 0) * 55ms);
+  }
+  .scribble-set.erasing .ink {
+    animation: sb-erase 0.9s ease forwards;
+    animation-delay: calc(var(--i, 0) * 22ms);
+  }
+  .scribble-set.erasing .note {
+    animation: sb-unwrite 0.5s ease forwards;
+    animation-delay: calc(var(--i, 0) * 22ms);
+  }
+
+  @keyframes sb-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+  @keyframes sb-erase { from { stroke-dashoffset: 0; } to { stroke-dashoffset: 1; } }
+  @keyframes sb-write { to { clip-path: inset(0 0 0 0); } }
+  @keyframes sb-unwrite { to { clip-path: inset(0 0 0 100%); } }
+
+  /* margins collapse on small screens — drop the feature sketches, keep faint ambient */
+  @media (max-width: 900px) {
+    .scribble-set.feature { display: none !important; }
+    .scribble-bg { opacity: 0.7; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .ink { stroke-dashoffset: 0 !important; animation: none !important; }
+    .note { clip-path: none !important; animation: none !important; }
+    .scribble-set[hidden] { display: none; }
+  }
+</style>
+
+<script>
+  type SetEl = HTMLElement & { __drawables?: (SVGElement)[] };
+
+  function initScribbles(root: ParentNode) {
+    const svg = root.querySelector(".scribble-bg svg");
+    if (!svg) return;
+
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const sets = Array.from(svg.querySelectorAll<SetEl>(".scribble-set"));
+    const ambient = sets.find((s) => s.classList.contains("ambient"));
+    const features = sets.filter((s) => s.classList.contains("feature"));
+
+    // Assign a draw order so shapes appear sequentially, not all at once.
+    for (const set of sets) {
+      const drawables = Array.from(set.querySelectorAll<SVGElement>(".ink, .note"));
+      drawables.forEach((el, i) => el.style.setProperty("--i", String(i)));
+      set.__drawables = drawables;
+    }
+
+    // Dev affordance: ?freeze=<set> renders ambient + one feature, fully drawn, no cycle.
+    const freeze = new URLSearchParams(location.search).get("freeze");
+    if (reduce || freeze) {
+      const keep = freeze
+        ? features.filter((s) => s.dataset.set === freeze)
+        : features.slice(0, 1);
+      for (const set of sets) {
+        set.hidden = set.classList.contains("feature") && !keep.includes(set);
+        if (!set.hidden) set.classList.add("drawn");
+      }
+      return;
+    }
+
+    const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    const holdMs = parseFloat(getComputedStyle(svg).getPropertyValue("--hold")) * 1000 || 4500;
+    const settle = (set: SetEl) => (set.__drawables?.length ?? 0) * 55 + 1600;
+
+    // Ambient: draw once, then leave it be.
+    if (ambient) {
+      ambient.hidden = false;
+      ambient.classList.add("drawing");
+    }
+
+    let idx = 0;
+    let running = true;
+    let cycling = false; // guard: never run two loops at once
+    async function cycle() {
+      if (cycling) return;
+      cycling = true;
+      while (running) {
+        const set = features[idx];
+        set.hidden = false;
+        set.classList.remove("erasing");
+        set.classList.add("drawing");
+        await wait(settle(set) + holdMs);
+        if (!running) break;
+        set.classList.remove("drawing");
+        set.classList.add("erasing");
+        await wait((set.__drawables?.length ?? 0) * 22 + 900);
+        set.classList.remove("erasing");
+        set.hidden = true;
+        idx = (idx + 1) % features.length;
+        await wait(350);
+      }
+      cycling = false;
+    }
+    cycle();
+
+    // Pause the cycle when the tab isn't visible (saves work, avoids drift).
+    document.addEventListener("visibilitychange", () => {
+      running = document.visibilityState === "visible";
+      if (running) cycle();
+    });
+  }
+
+  initScribbles(document);
+</script>

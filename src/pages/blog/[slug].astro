@@ -1,0 +1,89 @@
+---
+import { getCollection, render } from "astro:content";
+import Base from "../../layouts/Base.astro";
+
+export async function getStaticPaths() {
+  const posts = await getCollection("blog");
+  return posts.map((post) => ({ params: { slug: post.id }, props: { post } }));
+}
+
+const { post } = Astro.props;
+const { title, date, tags, stat, readMins } = post.data;
+const { Content } = await render(post);
+
+const months = ["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"];
+const dateLabel = `${months[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
+---
+
+<Base title={`${title} — Farhan Jamil`} description={post.data.teaser}>
+  <article class="post container">
+    <a href="/blog" class="back mono">← writing</a>
+
+    <div class="head">
+      <div class="chips">
+        {tags.map((t) => <span class="tag" data-tag={t}>{t}</span>)}
+        <span class="mono when">{dateLabel}</span>
+        {readMins && <span class="mono when">~ {readMins} min</span>}
+      </div>
+      <h1>{title}</h1>
+      {stat && (
+        <p class="stat mono">{stat.label} <b>{stat.value}</b></p>
+      )}
+    </div>
+
+    <div class="prose">
+      <Content />
+    </div>
+  </article>
+</Base>
+
+<style>
+  .post { max-width: 720px; padding-top: 40px; padding-bottom: 100px; }
+  .back { color: var(--ink-faint); font-size: 0.82rem; }
+  .back:hover { color: var(--amber); text-decoration: none; }
+
+  .head { margin: 26px 0 34px; }
+  .chips { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; color: var(--ink-faint); }
+  .when { color: var(--ink-faint); }
+  .head h1 {
+    margin: 16px 0 0;
+    font-size: clamp(2rem, 5vw, 3.1rem);
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1.05;
+  }
+  .stat {
+    display: inline-block;
+    margin: 16px 0 0;
+    padding: 6px 12px;
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    color: var(--ink-soft);
+    background: var(--bg-raise);
+  }
+  .stat b { color: var(--phosphor); font-weight: 600; }
+
+  .prose { color: var(--ink-soft); font-size: 1.12rem; line-height: 1.7; }
+  .prose :global(p) { margin: 0 0 1.25em; }
+  .prose :global(h2) {
+    font-size: 1.6rem;
+    color: var(--ink);
+    margin: 1.8em 0 0.5em;
+  }
+  .prose :global(a) { color: var(--amber); }
+  .prose :global(code) {
+    font-family: var(--font-mono);
+    font-size: 0.85em;
+    background: var(--bg-raise);
+    border: 1px solid var(--line-soft);
+    padding: 1px 5px;
+    border-radius: 4px;
+  }
+  .prose :global(blockquote) {
+    margin: 1.4em 0;
+    padding-left: 18px;
+    border-left: 2px solid var(--amber);
+    color: var(--ink);
+    font-style: italic;
+  }
+</style>
