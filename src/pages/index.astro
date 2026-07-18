@@ -4,7 +4,6 @@ import Base from "../layouts/Base.astro";
 import StatusLine from "../components/StatusLine.astro";
 import PostCard from "../components/PostCard.astro";
 import ProjectCard from "../components/ProjectCard.astro";
-import ProjectModal from "../components/ProjectModal.astro";
 
 const posts = (await getCollection("blog")).sort(
   (a, b) => b.data.date.valueOf() - a.data.date.valueOf(),
@@ -59,7 +58,7 @@ const status = [
       </div>
       <div class="builds__grid">
         {selectedBuilds.map((p) => (
-          <a href={`/projects/${p.id}`} data-pm-open={`pm-${p.id}`} class="build-link" aria-label={`Quick look: ${p.data.title}`}>
+          <a href={`/projects/${p.id}`} class="build-link" aria-label={`Open ${p.data.title}`}>
             <ProjectCard project={p} variant="mini" />
           </a>
         ))}
@@ -85,8 +84,6 @@ const status = [
     <span>Townsend Harris '26 · RPI ECSE/CSE '30</span>
     <span class="mono">breadboard — built in the open</span>
   </footer>
-
-  {selectedBuilds.map((p) => <ProjectModal project={p} />)}
 </Base>
 
 <style>
@@ -257,24 +254,29 @@ const status = [
 </style>
 
 <script>
-  const bar = document.getElementById("topbar");
-  const heroName = document.querySelector<HTMLElement>(".hero .name");
-  if (bar && heroName) {
+  // re-run on every view-transition navigation; clean up old listeners so they don't stack
+  let cleanup: (() => void) | null = null;
+  function setupHeader() {
+    cleanup?.();
+    cleanup = null;
+    const bar = document.getElementById("topbar");
+    const heroName = document.querySelector<HTMLElement>(".hero .name");
+    if (!bar || !heroName) return;
     let ticking = false;
     const update = () => {
       ticking = false;
-      // faint bg as soon as the page moves off the very top
       bar.classList.toggle("scrolled", window.scrollY > 4);
-      // reveal the brand once the hero name has slid up behind the bar
       const revealAt = bar.offsetHeight - 6;
       bar.classList.toggle("named", heroName.getBoundingClientRect().bottom < revealAt);
     };
-    addEventListener(
-      "scroll",
-      () => { if (!ticking) { requestAnimationFrame(update); ticking = true; } },
-      { passive: true },
-    );
+    const onScroll = () => { if (!ticking) { requestAnimationFrame(update); ticking = true; } };
+    addEventListener("scroll", onScroll, { passive: true });
     addEventListener("resize", update, { passive: true });
     update();
+    cleanup = () => {
+      removeEventListener("scroll", onScroll);
+      removeEventListener("resize", update);
+    };
   }
+  document.addEventListener("astro:page-load", setupHeader);
 </script>

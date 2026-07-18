@@ -3,7 +3,6 @@ import { getCollection } from "astro:content";
 import Base from "../layouts/Base.astro";
 import SiteHeader from "../components/SiteHeader.astro";
 import ProjectCard from "../components/ProjectCard.astro";
-import ProjectModal from "../components/ProjectModal.astro";
 
 const projects = (await getCollection("projects")).sort(
   (a, b) => a.data.order - b.data.order,
@@ -44,11 +43,11 @@ const fExt = [
         <div class="grid" aria-hidden="true"></div>
         {f.stat && <span class="readout mono">{f.stat.label} <b>{f.stat.value}</b></span>}
         <span class="phero__badge mono"><span class="led" aria-hidden="true"></span>{statusLabel[f.status]} · {f.year}</span>
-        <a href={fHref} data-pm-open={`pm-${featured.id}`} class="codename">{f.codename}</a>
+        <a href={fHref} class="codename">{f.codename}</a>
       </div>
       <div class="phero__body">
         <p class="phero__kicker mono">featured build</p>
-        <h2><a href={fHref} data-pm-open={`pm-${featured.id}`}>{f.title}</a></h2>
+        <h2><a href={fHref}>{f.title}</a></h2>
         <p class="phero__blurb">{f.blurb}</p>
         {f.tech.length > 0 && (
           <ul class="tech" aria-label="built with">
@@ -56,7 +55,7 @@ const fExt = [
           </ul>
         )}
         <div class="phero__links">
-          <a href={fHref} data-pm-open={`pm-${featured.id}`} class="mono">quick look <span aria-hidden="true">→</span></a>
+          <a href={fHref} class="mono">open the writeup <span aria-hidden="true">→</span></a>
           {fExt.map((l) => (
             <a href={l.href} class="mono" target="_blank" rel="noopener">{l.label} <span aria-hidden="true">↗</span></a>
           ))}
@@ -83,8 +82,6 @@ const fExt = [
     <a href="/" class="mono">← back home</a>
     <span class="mono">breadboard — built in the open</span>
   </footer>
-
-  {projects.map((p) => <ProjectModal project={p} />)}
 </Base>
 
 <style>

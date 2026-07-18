@@ -16,19 +16,19 @@ type Part = { key: string; side: "left" | "right"; kicker: string; desc: string;
 const parts: Part[] = [
   {
     key: "backplate", side: "left", kicker: "Back plate", hx: 41, hy: 70,
-    desc: "CNC-cut aluminum plate, spray-painted white and riveted to the frame — the structural face the whole station hangs off.",
+    desc: "Spray painted aluminum plate. The structural support for the driver station and a decorative piece.",
   },
   {
     key: "leds", side: "left", kicker: "LED status bar", hx: 53, hy: 57,
-    desc: "The HawkLights bar — a Pico and WS2812B strip in the electronics box driving live match-state lighting.",
+    desc: "The HawkLights bar. A 3D printed diffuser with W2812B LEDs inside controlled via a Raspberry Pi Pico.",
   },
   {
     key: "display", side: "right", kicker: "Display mount", hx: 74, hy: 20,
-    desc: "Adjustable arm holding a 7-inch display so the drive team reads robot and match info at a glance.",
+    desc: "PLA 3d printed mount to hold a 7 inch touch screen for the driver to view at for information for as an operator console. ",
   },
   {
     key: "ethernet", side: "right", kicker: "Ethernet pass-through", hx: 78, hy: 60,
-    desc: "A panel-mount coupler: the FMS cable plugs into the enclosure, not straight into the radio. The fragile radio jack never takes the plug/unplug wear or a cable yank, and the internal link to the radio stays seated all season — one less loose connection to debug at the field.",
+    desc: "An ethernet port for connecting to the FMS or into the robot.",
   },
 ];
 const left = parts.filter((p) => p.side === "left");
@@ -242,7 +242,7 @@ const right = parts.filter((p) => p.side === "right");
 </style>
 
 <script>
-  function initExplorer(root: HTMLElement) {
+  function initExplorer(root: HTMLElement): () => void {
     const imgs = Array.from(root.querySelectorAll<HTMLElement>(".ds__img"));
     const callouts = Array.from(root.querySelectorAll<HTMLElement>(".ds__callout"));
     const hotspots = Array.from(root.querySelectorAll<HTMLElement>(".ds__hotspot"));
@@ -298,10 +298,28 @@ const right = parts.filter((p) => p.side === "right");
 
     activate("full");
     drawLines();
-    new ResizeObserver(drawLines).observe(root);
-    window.addEventListener("resize", drawLines);
-    window.addEventListener("load", drawLines);
+    requestAnimationFrame(drawLines);
+    const ro = new ResizeObserver(drawLines);
+    ro.observe(root);
+    const onResize = () => drawLines();
+    window.addEventListener("resize", onResize);
+    // redraw once any not-yet-loaded images settle their layout
+    root.querySelectorAll("img").forEach((img) => {
+      if (!(img as HTMLImageElement).complete) img.addEventListener("load", drawLines, { once: true });
+    });
+    // cleanup only the page-global handlers (element listeners die with the DOM)
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", onResize);
+    };
   }
 
-  document.querySelectorAll<HTMLElement>(".ds").forEach(initExplorer);
+  // re-init on every view-transition navigation; tear down old global listeners first
+  let cleanups: Array<() => void> = [];
+  function setupExplorers() {
+    cleanups.forEach((fn) => fn());
+    cleanups = [];
+    document.querySelectorAll<HTMLElement>(".ds").forEach((root) => cleanups.push(initExplorer(root)));
+  }
+  document.addEventListener("astro:page-load", setupExplorers);
 </script>

@@ -8,7 +8,6 @@ interface Props {
 const { project, variant = "grid" } = Astro.props;
 const { title, codename, blurb, year, status, tech, stat, links } = project.data;
 const href = `/projects/${project.id}`;
-const modal = `pm-${project.id}`;
 
 const statusLabel: Record<string, string> = {
   shipped: "SHIPPED",
@@ -34,7 +33,7 @@ const linkList: { label: string; href: string }[] = [
   </div>
 
   <h3 class="pcard__title">
-    {variant === "grid" ? <a href={href} data-pm-open={modal}>{title}</a> : title}
+    {variant === "grid" ? <a href={href}>{title}</a> : title}
   </h3>
   <p class="pcard__blurb">{blurb}</p>
 
@@ -49,7 +48,7 @@ const linkList: { label: string; href: string }[] = [
         </ul>
       )}
       <div class="pcard__links">
-        <a href={href} data-pm-open={modal} class="mono open">quick look <span aria-hidden="true">→</span></a>
+        <a href={href} class="mono open">open the writeup <span aria-hidden="true">→</span></a>
         {linkList.map((l) => (
           <a href={l.href} class="mono" target="_blank" rel="noopener">
             {l.label} <span aria-hidden="true">↗</span>

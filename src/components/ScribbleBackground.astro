@@ -704,11 +704,24 @@ const tiltOf = (gi: number, ci: number) => tiltAngles[(gi * 7 + ci * 5) % tiltAn
     }
     cycle();
 
-    document.addEventListener("visibilitychange", () => {
+    const onVis = () => {
       running = document.visibilityState === "visible";
       if (running) cycle();
-    });
+    };
+    document.addEventListener("visibilitychange", onVis);
+
+    return () => {
+      running = false;
+      document.removeEventListener("visibilitychange", onVis);
+    };
   }
 
-  initScribbles(document);
+  // Fresh scribbles on each page (view-transition navigations included). Stop the previous
+  // page's cycle first so it doesn't keep running on the old node. It just animates normally.
+  let stopScribbles: (() => void) | null = null;
+  function boot() {
+    stopScribbles?.();
+    stopScribbles = initScribbles(document) ?? null;
+  }
+  document.addEventListener("astro:page-load", boot);
 </script>

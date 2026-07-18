@@ -1,5 +1,6 @@
 ---
 import "../styles/global.css";
+import { ClientRouter } from "astro:transitions";
 import ScribbleBackground from "../components/ScribbleBackground.astro";
 
 interface Props {
@@ -30,6 +31,7 @@ const {
       rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400;1,9..144,500&family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Caveat:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
     />
+    <ClientRouter />
   </head>
   <body>
     {scribbles && <ScribbleBackground />}

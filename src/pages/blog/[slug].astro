@@ -1,6 +1,7 @@
 ---
 import { getCollection, render } from "astro:content";
 import Base from "../../layouts/Base.astro";
+import SiteHeader from "../../components/SiteHeader.astro";
 
 export async function getStaticPaths() {
   const posts = await getCollection("blog");
@@ -16,6 +17,7 @@ const dateLabel = `${months[date.getMonth()]} ${date.getDate()}, ${date.getFullY
 ---
 
 <Base title={`${title} — Farhan Jamil`} description={post.data.teaser}>
+  <SiteHeader current="writing" />
   <article class="post container">
     <a href="/blog" class="back mono">← writing</a>
 

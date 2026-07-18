@@ -1,6 +1,7 @@
 ---
 import { getCollection } from "astro:content";
 import Base from "../../layouts/Base.astro";
+import SiteHeader from "../../components/SiteHeader.astro";
 import PostCard from "../../components/PostCard.astro";
 
 const posts = (await getCollection("blog")).sort(
@@ -9,8 +10,8 @@ const posts = (await getCollection("blog")).sort(
 ---
 
 <Base title="Writing — Farhan Jamil">
+  <SiteHeader current="writing" />
   <main class="container wrap">
-    <a href="/" class="back mono">← home</a>
     <header class="head">
       <p class="hand eyebrow">the full log —</p>
       <h1>writing</h1>
