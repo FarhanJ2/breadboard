@@ -22,7 +22,7 @@ const blog = defineCollection({
 });
 
 const projects = defineCollection({
-  loader: glob({ pattern: "**/*.md", base: "./src/content/projects" }),
+  loader: glob({ pattern: "**/*.{md,mdx}", base: "./src/content/projects" }),
   // function form so we can use the image() helper for optimized cover images
   schema: ({ image }) =>
     z.object({
