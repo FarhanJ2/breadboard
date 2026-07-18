@@ -2,30 +2,30 @@
 /**
  * ScribbleBackground
  * -------------------
- * Ambient, abstract, multi-colored line art scattered in the page margins. Each motif
- * (orbits, waveforms, spirals, constellations, bursts, flowing loops) is generated
- * procedurally and draws itself in via stroke-dashoffset. Every slot cycles between a
- * couple of variants on its own phase, so the background is always quietly changing.
+ * Full-page ambient line art that randomly circulates between themed GROUPS:
+ *   1. abstract  — orbits, waveforms, spirals, constellations, bursts, loops
+ *   2. math      — plots, a unit circle, Newton's method, a rotation matrix, integrals
+ *   3. physics   — a shoot-on-the-move projectile diagram + the real launch equations
+ *   4. code      — excerpts of Farhan's actual SOTM turret solver
  *
- * Fixed behind content, aria-hidden, pointer-events:none. Respects reduced motion.
+ * One group is on screen at a time: it draws itself in (paths via stroke-dashoffset,
+ * text via a left→right "writing" wipe), holds, erases, then a different random group
+ * takes over. Fixed behind content, aria-hidden, faint. Respects reduced motion.
  */
 
-// ---- palette (each motif mixes a few of these) ---------------------------
 const C = {
   amber: "#ffb454",
-  blue: "hsl(222 80% 71%)",
+  blue: "hsl(222 80% 72%)",
   green: "#7ee0a8",
-  purple: "hsl(276 74% 77%)",
+  purple: "hsl(276 74% 78%)",
   coral: "#f0906a",
   cyan: "#63d3e6",
   pink: "#ff92b6",
 };
 
-// ---- tiny deterministic RNG so SSR output is stable ----------------------
 function mulberry32(seed: number) {
   return () => {
-    seed |= 0;
-    seed = (seed + 0x6d2b79f5) | 0;
+    seed |= 0; seed = (seed + 0x6d2b79f5) | 0;
     let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
@@ -33,36 +33,95 @@ function mulberry32(seed: number) {
 }
 const f = (n: number) => Math.round(n * 10) / 10;
 const rot2 = (x: number, y: number, a: number): [number, number] => [
-  x * Math.cos(a) - y * Math.sin(a),
-  x * Math.sin(a) + y * Math.cos(a),
+  x * Math.cos(a) - y * Math.sin(a), x * Math.sin(a) + y * Math.cos(a),
 ];
 function shuffle<T>(arr: T[], r: () => number) {
   const a = [...arr];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(r() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
+  for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
   return a;
 }
 const pick = <T,>(arr: T[], r: () => number) => arr[Math.floor(r() * arr.length)];
+const TAU = Math.PI * 2;
 
-// ---- prim types ----------------------------------------------------------
 type Prim =
   | { t: "p"; d: string; c: string; faint?: boolean }
   | { t: "c"; cx: number; cy: number; r: number; c: string; faint?: boolean }
-  | { t: "l"; x1: number; y1: number; x2: number; y2: number; c: string; faint?: boolean };
+  | { t: "l"; x1: number; y1: number; x2: number; y2: number; c: string; faint?: boolean }
+  | { t: "t"; x: number; y: number; s: string; size: number; font: "mono" | "math" | "hand"; c: string; faint?: boolean };
+type Cluster = { transform: string; prims: Prim[] };
+type Group = { name: string; clusters: Cluster[] };
 
-const TAU = Math.PI * 2;
+// ---------- shared drawing helpers (absolute viewBox coords) ----------
+function arrow(x1: number, y1: number, x2: number, y2: number, c: string): Prim[] {
+  const a = Math.atan2(y2 - y1, x2 - x1), h = 10;
+  return [
+    { t: "l", x1, y1, x2, y2, c },
+    { t: "l", x1: x2, y1: y2, x2: x2 - h * Math.cos(a - 0.4), y2: y2 - h * Math.sin(a - 0.4), c },
+    { t: "l", x1: x2, y1: y2, x2: x2 - h * Math.cos(a + 0.4), y2: y2 - h * Math.sin(a + 0.4), c },
+  ];
+}
+function codeBlock(x: number, y: number, lines: [string, string][], size = 12): Prim[] {
+  return lines.map((ln, i) => ({
+    t: "t", x, y: y + i * (size * 1.5), s: ln[0], size, font: "mono", c: ln[1], faint: ln[1] === C.green ? false : true,
+  }));
+}
 
-function ellipsePath(rx: number, ry: number, rot: number) {
-  let d = "";
-  const s = 44;
-  for (let i = 0; i <= s; i++) {
-    const th = (i / s) * TAU;
-    const [x, y] = rot2(Math.cos(th) * rx, Math.sin(th) * ry, rot);
-    d += (i === 0 ? "M" : "L") + f(x) + " " + f(y) + " ";
+// ================= GROUP 1 — ABSTRACT =================
+function gWaves(seed: number): Prim[] {
+  const r = mulberry32(seed), cols = shuffle([C.green, C.blue, C.coral, C.amber, C.cyan], r), out: Prim[] = [];
+  for (let k = 0; k < 4; k++) {
+    const y0 = -48 + k * 30, amp = 9 + r() * 15, cyc = 2 + Math.floor(r() * 3), ph = r() * TAU;
+    let d = "";
+    for (let x = -175; x <= 175; x += 7) d += (x === -175 ? "M" : "L") + f(x) + " " + f(y0 + amp * Math.sin(((x + 175) / 350) * cyc * TAU + ph)) + " ";
+    out.push({ t: "p", d, c: cols[k % cols.length] });
   }
-  return d + "Z";
+  return out;
+}
+function gSpiral(seed: number): Prim[] {
+  const r = mulberry32(seed), cols = shuffle([C.amber, C.purple, C.cyan, C.pink], r), out: Prim[] = [];
+  const turns = 3 + r() * 1.6, dir = r() < 0.5 ? 1 : -1, b = 150 / (turns * TAU), steps = Math.floor(turns * 44);
+  let d = "";
+  for (let i = 0; i <= steps; i++) {
+    const th = (i / steps) * turns * TAU, rad = b * th, x = Math.cos(th * dir) * rad, y = Math.sin(th * dir) * rad;
+    d += (i === 0 ? "M" : "L") + f(x) + " " + f(y) + " ";
+    if (i % 40 === 0 && i > 0) out.push({ t: "c", cx: x, cy: y, r: 3.5, c: pick(cols, r) });
+  }
+  out.unshift({ t: "p", d, c: cols[0] });
+  return out;
+}
+function gOrbits(seed: number): Prim[] {
+  const r = mulberry32(seed), cols = shuffle([C.blue, C.amber, C.pink, C.cyan, C.green], r), out: Prim[] = [];
+  for (let k = 0; k < 3; k++) {
+    const rx = 58 + k * 30, ry = 26 + k * 12, rot = r() * Math.PI;
+    let d = ""; const s = 44;
+    for (let i = 0; i <= s; i++) { const th = (i / s) * TAU; const [x, y] = rot2(Math.cos(th) * rx, Math.sin(th) * ry, rot); d += (i === 0 ? "M" : "L") + f(x) + " " + f(y) + " "; }
+    out.push({ t: "p", d: d + "Z", c: cols[k % cols.length] });
+    const th = r() * TAU; const [nx, ny] = rot2(Math.cos(th) * rx, Math.sin(th) * ry, rot);
+    out.push({ t: "c", cx: nx, cy: ny, r: 4.5, c: cols[(k + 2) % cols.length] });
+  }
+  out.push({ t: "c", cx: 0, cy: 0, r: 3, c: C.amber });
+  return out;
+}
+function gConstellation(seed: number): Prim[] {
+  const r = mulberry32(seed), cols = [C.cyan, C.amber, C.green, C.pink, C.purple, C.blue];
+  const pts = Array.from({ length: 8 }, () => ({ x: (r() * 2 - 1) * 140, y: (r() * 2 - 1) * 120, c: pick(cols, r) }));
+  const out: Prim[] = [];
+  pts.forEach((p, i) => {
+    const near = pts.map((q, j) => ({ j, d: (q.x - p.x) ** 2 + (q.y - p.y) ** 2 })).filter((o) => o.j !== i).sort((a, b) => a.d - b.d);
+    for (let m = 0; m < (r() < 0.5 ? 1 : 2); m++) { const j = near[m].j; if (i < j) out.push({ t: "l", x1: p.x, y1: p.y, x2: pts[j].x, y2: pts[j].y, c: C.blue, faint: true }); }
+  });
+  pts.forEach((p) => out.push({ t: "c", cx: p.x, cy: p.y, r: 3 + r() * 3, c: p.c }));
+  return out;
+}
+function gBurst(seed: number): Prim[] {
+  const r = mulberry32(seed), cols = [C.amber, C.coral, C.green, C.cyan, C.purple, C.pink, C.blue], out: Prim[] = [];
+  for (let i = 0; i < 13; i++) {
+    const a = (i / 13) * TAU + r() * 0.12, len = 46 + r() * 82, c = cols[i % cols.length];
+    out.push({ t: "l", x1: Math.cos(a) * 14, y1: Math.sin(a) * 14, x2: Math.cos(a) * len, y2: Math.sin(a) * len, c });
+    out.push({ t: "c", cx: Math.cos(a) * len, cy: Math.sin(a) * len, r: 3, c });
+  }
+  out.push({ t: "c", cx: 0, cy: 0, r: 11, c: C.amber });
+  return out;
 }
 function closedSmooth(p: [number, number][]) {
   const n = p.length;
@@ -75,92 +134,8 @@ function closedSmooth(p: [number, number][]) {
   }
   return d + "Z";
 }
-
-// ---- motif generators (local coords, centered on 0,0) --------------------
-function gWaves(seed: number): Prim[] {
-  const r = mulberry32(seed);
-  const cols = shuffle([C.green, C.blue, C.coral, C.amber, C.cyan], r);
-  const out: Prim[] = [];
-  for (let k = 0; k < 4; k++) {
-    const y0 = -48 + k * 30, amp = 9 + r() * 15, cyc = 2 + Math.floor(r() * 3), ph = r() * TAU;
-    let d = "";
-    for (let x = -175; x <= 175; x += 7) {
-      const y = y0 + amp * Math.sin(((x + 175) / 350) * cyc * TAU + ph);
-      d += (x === -175 ? "M" : "L") + f(x) + " " + f(y) + " ";
-    }
-    out.push({ t: "p", d, c: cols[k % cols.length] });
-  }
-  return out;
-}
-function gSpiral(seed: number): Prim[] {
-  const r = mulberry32(seed);
-  const cols = shuffle([C.amber, C.purple, C.cyan, C.pink], r);
-  const out: Prim[] = [];
-  const turns = 3 + r() * 1.6, dir = r() < 0.5 ? 1 : -1, maxR = 150, b = maxR / (turns * TAU);
-  const steps = Math.floor(turns * 44);
-  let d = "";
-  for (let i = 0; i <= steps; i++) {
-    const th = (i / steps) * turns * TAU, rad = b * th;
-    const x = Math.cos(th * dir) * rad, y = Math.sin(th * dir) * rad;
-    d += (i === 0 ? "M" : "L") + f(x) + " " + f(y) + " ";
-    if (i % 40 === 0 && i > 0) out.push({ t: "c", cx: x, cy: y, r: 3.5, c: pick(cols, r) });
-  }
-  out.unshift({ t: "p", d, c: cols[0] });
-  out.push({ t: "c", cx: 0, cy: 0, r: 4, c: cols[1] });
-  return out;
-}
-function gOrbits(seed: number): Prim[] {
-  const r = mulberry32(seed);
-  const cols = shuffle([C.blue, C.amber, C.pink, C.cyan, C.green], r);
-  const out: Prim[] = [];
-  for (let k = 0; k < 3; k++) {
-    const rx = 58 + k * 30, ry = 26 + k * 12, rot = r() * Math.PI;
-    out.push({ t: "p", d: ellipsePath(rx, ry, rot), c: cols[k % cols.length] });
-    const th = r() * TAU;
-    const [nx, ny] = rot2(Math.cos(th) * rx, Math.sin(th) * ry, rot);
-    out.push({ t: "c", cx: nx, cy: ny, r: 4.5, c: cols[(k + 2) % cols.length] });
-  }
-  out.push({ t: "c", cx: 0, cy: 0, r: 3, c: C.amber });
-  return out;
-}
-function gConstellation(seed: number): Prim[] {
-  const r = mulberry32(seed);
-  const cols = [C.cyan, C.amber, C.green, C.pink, C.purple, C.blue];
-  const pts = Array.from({ length: 9 }, () => ({
-    x: (r() * 2 - 1) * 150, y: (r() * 2 - 1) * 130, c: pick(cols, r),
-  }));
-  const out: Prim[] = [];
-  pts.forEach((p, i) => {
-    const near = pts
-      .map((q, j) => ({ j, d: (q.x - p.x) ** 2 + (q.y - p.y) ** 2 }))
-      .filter((o) => o.j !== i)
-      .sort((a, b) => a.d - b.d);
-    const k = r() < 0.5 ? 1 : 2;
-    for (let m = 0; m < k; m++) {
-      const j = near[m].j;
-      if (i < j) out.push({ t: "l", x1: p.x, y1: p.y, x2: pts[j].x, y2: pts[j].y, c: C.blue, faint: true });
-    }
-  });
-  pts.forEach((p) => out.push({ t: "c", cx: p.x, cy: p.y, r: 3 + r() * 3, c: p.c }));
-  return out;
-}
-function gBurst(seed: number): Prim[] {
-  const r = mulberry32(seed);
-  const cols = [C.amber, C.coral, C.green, C.cyan, C.purple, C.pink, C.blue];
-  const out: Prim[] = [];
-  const n = 13;
-  for (let i = 0; i < n; i++) {
-    const a = (i / n) * TAU + r() * 0.12, len = 46 + r() * 82, c = cols[i % cols.length];
-    out.push({ t: "l", x1: Math.cos(a) * 14, y1: Math.sin(a) * 14, x2: Math.cos(a) * len, y2: Math.sin(a) * len, c });
-    out.push({ t: "c", cx: Math.cos(a) * len, cy: Math.sin(a) * len, r: 3, c });
-  }
-  out.push({ t: "c", cx: 0, cy: 0, r: 11, c: C.amber });
-  return out;
-}
 function gLoop(seed: number): Prim[] {
-  const r = mulberry32(seed);
-  const cols = shuffle([C.purple, C.coral, C.green, C.blue, C.pink], r);
-  const out: Prim[] = [];
+  const r = mulberry32(seed), cols = shuffle([C.purple, C.coral, C.green, C.blue, C.pink], r), out: Prim[] = [];
   for (let s = 0; s < 2; s++) {
     const nn = 6 + Math.floor(r() * 2), rad = 78 - s * 30;
     const pts: [number, number][] = Array.from({ length: nn }, (_, i) => {
@@ -171,42 +146,379 @@ function gLoop(seed: number): Prim[] {
   }
   return out;
 }
+const abstractGroup: Group = {
+  name: "abstract",
+  clusters: [
+    { transform: "translate(1230 170) scale(0.9)", prims: gOrbits(11) },
+    { transform: "translate(1285 500) scale(0.85)", prims: gWaves(22) },
+    { transform: "translate(1150 760) scale(0.9)", prims: gSpiral(33) },
+    { transform: "translate(200 720) scale(0.9)", prims: gConstellation(44) },
+    { transform: "translate(130 430) scale(0.82)", prims: gBurst(55) },
+    { transform: "translate(560 620) scale(0.8)", prims: gWaves(66) },
+    { transform: "translate(430 170) scale(0.8)", prims: gConstellation(77) },
+    { transform: "translate(880 260) scale(0.85)", prims: gSpiral(88) },
+    { transform: "translate(720 440) scale(0.72)", prims: gOrbits(99) },
+    { transform: "translate(1030 700) scale(0.8)", prims: gBurst(111) },
+    { transform: "translate(360 480) scale(0.7)", prims: gLoop(122) },
+    { transform: "translate(1080 380) scale(0.68)", prims: gConstellation(133) },
+    { transform: "translate(680 800) scale(0.72)", prims: gLoop(144) },
+  ],
+};
 
-// ---- slots: position + two motif variants each ---------------------------
-type Gen = (seed: number) => Prim[];
-const slotDefs: { x: number; y: number; s: number; gens: [Gen, Gen] }[] = [
-  { x: 1225, y: 185, s: 0.9, gens: [gOrbits, gConstellation] },   // top-right
-  { x: 1290, y: 480, s: 0.85, gens: [gWaves, gSpiral] },          // right-mid
-  { x: 1175, y: 720, s: 0.9, gens: [gLoop, gBurst] },             // bottom-right
-  { x: 190, y: 715, s: 0.9, gens: [gSpiral, gConstellation] },    // bottom-left
-  { x: 120, y: 455, s: 0.82, gens: [gBurst, gWaves] },            // left-mid
-  { x: 930, y: 235, s: 0.85, gens: [gConstellation, gLoop] },     // upper-center-right
+// ================= GROUP 2 — MATH (graph-forward) =================
+function coordPlot(ox: number, oy: number, W: number): Prim[] {
+  const out: Prim[] = [];
+  const faint = (p: Prim): Prim => ({ ...p, faint: true });
+  arrow(ox - 26, oy, ox + W + 22, oy, C.blue).forEach((p) => out.push(faint(p)));
+  arrow(ox, oy + 118, ox, oy - 178, C.blue).forEach((p) => out.push(faint(p)));
+  for (let x = ox + 52; x < ox + W; x += 56) out.push({ t: "l", x1: x, y1: oy - 5, x2: x, y2: oy + 5, c: C.blue, faint: true });
+  for (let y = oy - 34; y > oy - 168; y -= 34) out.push({ t: "l", x1: ox - 5, y1: y, x2: ox + 5, y2: y, c: C.blue, faint: true });
+  for (let y = oy + 34; y < oy + 108; y += 34) out.push({ t: "l", x1: ox - 5, y1: y, x2: ox + 5, y2: y, c: C.blue, faint: true });
+  const curve = (fn: (t: number) => number, c: string) => {
+    let d = "";
+    for (let i = 0; i <= 64; i++) { const t = i / 64; d += (i === 0 ? "M" : "L") + f(ox + t * W) + " " + f(fn(t)) + " "; }
+    out.push({ t: "p", d, c });
+  };
+  const sine = (t: number) => oy - 60 * Math.sin(t * 3 * TAU);
+  const decay = (t: number) => oy - 122 * Math.exp(-2.6 * t);
+  const para = (t: number) => oy - 155 * t * t;
+  curve(sine, C.blue);
+  curve(decay, C.cyan);
+  curve(para, C.green);
+  // tangent on the parabola — a little derivative viz
+  const t0 = 0.72, x0 = ox + t0 * W, y0 = para(t0), slope = (-310 * t0) / W;
+  out.push({ t: "l", x1: x0 - 74, y1: y0 - slope * 74, x2: x0 + 74, y2: y0 + slope * 74, c: C.amber });
+  out.push({ t: "c", cx: x0, cy: y0, r: 4, c: C.amber });
+  // small captions on the curves themselves (not floating equations)
+  out.push({ t: "t", x: ox + 0.1 * W, y: sine(0.083) - 10, s: "sin x", size: 14, font: "math", c: C.blue, faint: true });
+  out.push({ t: "t", x: ox + 12, y: decay(0) - 8, s: "e^(−ct)", size: 14, font: "math", c: C.cyan, faint: true });
+  out.push({ t: "t", x: ox + W + 8, y: para(1) + 4, s: "x²", size: 15, font: "math", c: C.green, faint: true });
+  out.push({ t: "t", x: x0 + 10, y: y0 - 12, s: "dy/dx", size: 12, font: "math", c: C.amber, faint: true });
+  return out;
+}
+function unitCircleGraph(ox: number, oy: number, rr: number): Prim[] {
+  const out: Prim[] = [];
+  let cd = ""; const s = 48;
+  for (let i = 0; i <= s; i++) { const th = (i / s) * TAU; cd += (i === 0 ? "M" : "L") + f(ox + Math.cos(th) * rr) + " " + f(oy + Math.sin(th) * rr) + " "; }
+  out.push({ t: "p", d: cd + "Z", c: C.amber });
+  out.push({ t: "l", x1: ox - rr - 10, y1: oy, x2: ox + rr + 10, y2: oy, c: C.amber, faint: true });
+  out.push({ t: "l", x1: ox, y1: oy + rr + 10, x2: ox, y2: oy - rr - 10, c: C.amber, faint: true });
+  const a = -0.95, tx = ox + Math.cos(a) * rr, ty = oy + Math.sin(a) * rr;
+  arrow(ox, oy, tx, ty, C.pink).forEach((p) => out.push(p));
+  out.push({ t: "l", x1: tx, y1: ty, x2: tx, y2: oy, c: C.green, faint: true }); // sin
+  out.push({ t: "l", x1: tx, y1: ty, x2: ox, y2: ty, c: C.blue, faint: true });  // cos
+  out.push({ t: "c", cx: tx, cy: ty, r: 4, c: C.pink });
+  out.push({ t: "t", x: ox + 12, y: oy - 8, s: "θ", size: 16, font: "math", c: C.pink });
+  out.push({ t: "t", x: tx + 6, y: (oy + ty) / 2, s: "sin", size: 12, font: "math", c: C.green, faint: true });
+  out.push({ t: "t", x: (ox + tx) / 2 - 12, y: oy + 16, s: "cos", size: 12, font: "math", c: C.blue, faint: true });
+  return out;
+}
+function parametric(cx: number, cy: number, fn: (t: number) => [number, number], c: string, closed = true): Prim {
+  let d = ""; const N = 96;
+  for (let i = 0; i <= N; i++) { const [x, y] = fn(i / N); d += (i === 0 ? "M" : "L") + f(cx + x) + " " + f(cy + y) + " "; }
+  return { t: "p", d: d + (closed ? "Z" : ""), c };
+}
+function lissajous(cx: number, cy: number, R: number, c: string): Prim[] {
+  return [
+    parametric(cx, cy, (t) => { const T = t * TAU; return [R * Math.sin(3 * T + Math.PI / 2), R * 0.82 * Math.sin(2 * T)]; }, c),
+    { t: "t", x: cx - 18, y: cy + R + 20, s: "Lissajous", size: 12, font: "math", c, faint: true },
+  ];
+}
+function rose(cx: number, cy: number, R: number, k: number, c: string): Prim[] {
+  return [
+    parametric(cx, cy, (t) => { const T = t * TAU; const r = R * Math.cos(k * T); return [r * Math.cos(T), r * Math.sin(T)]; }, c),
+    { t: "t", x: cx - 26, y: cy + R + 20, s: "r = cos kθ", size: 12, font: "math", c, faint: true },
+  ];
+}
+function dampedWave(ox: number, oy: number, W: number, c: string): Prim[] {
+  const out: Prim[] = [];
+  out.push({ t: "l", x1: ox - 10, y1: oy, x2: ox + W + 10, y2: oy, c: C.blue, faint: true });
+  let d = "", e = "";
+  for (let i = 0; i <= 90; i++) { const t = i / 90; d += (i === 0 ? "M" : "L") + f(ox + t * W) + " " + f(oy - 78 * Math.exp(-2.4 * t) * Math.cos(t * 5 * TAU)) + " "; }
+  for (let i = 0; i <= 45; i++) { const t = i / 45; e += (i === 0 ? "M" : "L") + f(ox + t * W) + " " + f(oy - 78 * Math.exp(-2.4 * t)) + " "; }
+  out.push({ t: "p", d, c });
+  out.push({ t: "p", d: e, c: C.amber, faint: true });
+  out.push({ t: "t", x: ox + W - 96, y: oy - 60, s: "e^(−ct) cos ωt", size: 12, font: "math", c, faint: true });
+  return out;
+}
+function scatterPlot(ox: number, oy: number, W: number, H: number, seed: number): Prim[] {
+  const r = mulberry32(seed), out: Prim[] = [];
+  out.push({ t: "l", x1: ox - 8, y1: oy, x2: ox + W + 8, y2: oy, c: C.green, faint: true });
+  out.push({ t: "l", x1: ox, y1: oy + 8, x2: ox, y2: oy - H - 8, c: C.green, faint: true });
+  const pts: [number, number][] = [];
+  for (let i = 0; i < 11; i++) { const x = (i / 10) * W, y = (0.12 + 0.72 * (i / 10)) * H + (r() * 2 - 1) * 17; pts.push([x, y]); out.push({ t: "c", cx: ox + x, cy: oy - y, r: 3, c: C.green }); }
+  const n = pts.length; let sx = 0, sy = 0, sxy = 0, sxx = 0;
+  pts.forEach(([x, y]) => { sx += x; sy += y; sxy += x * y; sxx += x * x; });
+  const m = (n * sxy - sx * sy) / (n * sxx - sx * sx), b = (sy - m * sx) / n;
+  out.push({ t: "l", x1: ox, y1: oy - b, x2: ox + W, y2: oy - (m * W + b), c: C.amber });
+  out.push({ t: "t", x: ox + 6, y: oy - H - 6, s: "ŷ = mx + b", size: 12, font: "math", c: C.amber, faint: true });
+  return out;
+}
+function rightTriangle(cx: number, cy: number): Prim[] {
+  const A: [number, number] = [cx - 72, cy + 44], B: [number, number] = [cx + 72, cy + 44], V: [number, number] = [cx - 72, cy - 58];
+  return [
+    { t: "l", x1: A[0], y1: A[1], x2: B[0], y2: B[1], c: C.blue },
+    { t: "l", x1: B[0], y1: B[1], x2: V[0], y2: V[1], c: C.blue },
+    { t: "l", x1: V[0], y1: V[1], x2: A[0], y2: A[1], c: C.blue },
+    { t: "l", x1: A[0], y1: A[1] - 15, x2: A[0] + 15, y2: A[1] - 15, c: C.blue, faint: true },
+    { t: "l", x1: A[0] + 15, y1: A[1] - 15, x2: A[0] + 15, y2: A[1], c: C.blue, faint: true },
+    { t: "t", x: cx - 6, y: cy + 60, s: "a", size: 12, font: "math", c: C.blue, faint: true },
+    { t: "t", x: cx + 4, y: cy - 4, s: "c", size: 12, font: "math", c: C.blue, faint: true },
+    { t: "t", x: cx - 90, y: cy - 4, s: "b", size: 12, font: "math", c: C.blue, faint: true },
+    { t: "t", x: B[0] - 30, y: B[1] - 8, s: "θ", size: 13, font: "math", c: C.pink },
+    { t: "t", x: cx - 96, y: cy - 74, s: "a² + b² = c²", size: 13, font: "math", c: C.blue, faint: true },
+  ];
+}
+function eqns(x: number, y: number, items: [string, string, number][]): Prim[] {
+  return items.map((it, i) => ({ t: "t", x, y: y + i * (it[2] * 1.7), s: it[0], size: it[2], font: "math" as const, c: it[1], faint: false }));
+}
+const mathGroup: Group = {
+  name: "math",
+  clusters: [
+    { transform: "translate(0 0)", prims: coordPlot(300, 440, 440) },
+    { transform: "translate(0 0)", prims: unitCircleGraph(1240, 210, 74) },
+    { transform: "translate(0 0)", prims: lissajous(885, 190, 62, C.purple) },
+    { transform: "translate(0 0)", prims: rose(1120, 500, 62, 5, C.pink) },
+    { transform: "translate(0 0)", prims: dampedWave(230, 720, 300, C.coral) },
+    { transform: "translate(0 0)", prims: scatterPlot(760, 700, 240, 120, 909) },
+    { transform: "translate(0 0)", prims: rightTriangle(1170, 730) },
+    { transform: "translate(0 0)", prims: eqns(85, 175, [["e^(iπ) + 1 = 0", C.amber, 19], ["‖v‖ = √(x² + y²)", C.cyan, 16]]) },
+    { transform: "translate(0 0)", prims: eqns(85, 560, [["d/dx x^n = n·x^(n−1)", C.green, 17], ["lim (f(x+h) − f(x)) / h", C.blue, 14]]) },
+    { transform: "translate(0 0)", prims: eqns(600, 275, [["∇ · F = ∂P/∂x + ∂Q/∂y", C.pink, 17]]) },
+    { transform: "translate(0 0)", prims: eqns(560, 605, [["P(A|B) = P(B|A) P(A) / P(B)", C.coral, 16]]) },
+    { transform: "translate(0 0)", prims: eqns(1000, 130, [["∫∫_R f dA", C.cyan, 21]]) },
+    { transform: "translate(0 0)", prims: [
+      { t: "t", x: 1205, y: 360, s: "[ a  b ]", size: 16, font: "mono", c: C.purple },
+      { t: "t", x: 1205, y: 384, s: "[ c  d ]", size: 16, font: "mono", c: C.purple },
+      { t: "t", x: 1175, y: 428, s: "Σ x^n/n! = e^x", size: 15, font: "math", c: C.amber },
+    ] },
+  ],
+};
+
+// (physics group removed by request — its graph/equations lived in math + code now)
+
+// ================= GROUP 3 — CODE (real SOTM solver, dense) =================
+const codeBlocks: { x: number; y: number; lines: [string, string][] }[] = [
+  { x: 85, y: 110, lines: [
+    ["MovingShotSolution solveMovingShot(", C.blue],
+    ["    Translation3d actualTarget,", C.blue],
+    ["    Translation3d robotVelocity,", C.blue],
+    ["    Translation3d fieldAcceleration,", C.blue],
+    ["    Rotation2d robotHeading,", C.blue],
+    ["    double chassisOmega) {", C.blue],
+  ] },
+  { x: 555, y: 100, lines: [
+    ["// turret tangential velocity from spin", C.green],
+    ["// v = (-omega*dy, omega*dx)", C.green],
+    ["fieldRelVel = new Translation2d(", C.blue],
+    ["    vx + (-omega * turretDy),", C.blue],
+    ["    vy + ( omega * turretDx))", C.blue],
+    ["  .rotateBy(robotHeading);", C.blue],
+  ] },
+  { x: 1015, y: 108, lines: [
+    ["// ball leaves D seconds after aim", C.green],
+    ["// vt = hub - v(D+TOF) - a D TOF", C.green],
+    ["//    - 0.5 a D^2", C.green],
+    ["posOffX = -velX*D - 0.5*accX*D*D;", C.amber],
+    ["posOffY = -velY*D - 0.5*accY*D*D;", C.amber],
+  ] },
+  { x: 85, y: 360, lines: [
+    ["double driftTOF = dragC > 1e-6", C.blue],
+    ["  ? (1 - Math.exp(-dragC*t)) / dragC", C.coral],
+    ["  : t;", C.blue],
+    ["tofOffX = -velX*driftTOF - accX*D*t;", C.blue],
+    ["tofOffY = -velY*driftTOF - accY*D*t;", C.blue],
+  ] },
+  { x: 1010, y: 360, lines: [
+    ["// f'(t): central finite difference", C.green],
+    ["final double H = 0.005; // 5ms step", C.blue],
+    ["dPrime = (tofHigh - tofLow) / (2*H);", C.amber],
+  ] },
+  { x: 555, y: 270, lines: [
+    ["virtualTarget = new Translation3d(", C.blue],
+    ["  actualTarget.getX() + posOffX + tofOffX,", C.blue],
+    ["  actualTarget.getY() + posOffY + tofOffY,", C.blue],
+    ["  actualTarget.getZ());", C.blue],
+  ] },
+  { x: 1010, y: 480, lines: [
+    ["for (int i = 0; i < maxIters; i++) {", C.amber],
+    ["  double newTof = tof(v, theta, d) * scale;", C.blue],
+    ["  ...", C.green],
+  ] },
+  { x: 560, y: 430, lines: [
+    ["double fieldRelAngle = Math.atan2(", C.blue],
+    ["    vt.getY() - turretXY.getY(),", C.blue],
+    ["    vt.getX() - turretXY.getX());", C.blue],
+  ] },
+  { x: 85, y: 600, lines: [
+    ["// Newton step: f(t) = LUT(d(t)) - t = 0", C.green],
+    ["double f      = newTof - tGuess;", C.blue],
+    ["double fPrime = dPrime - 1.0;", C.blue],
+    ["nextTof = tGuess - f / fPrime;", C.amber],
+    ["if (abs(nextTof - tGuess) < tol) break;", C.blue],
+  ] },
+  { x: 975, y: 600, lines: [
+    ['Logger.recordOutput("SOTM/TOF", t);', C.green],
+    ['Logger.recordOutput("SOTM/ExitVel", v);', C.green],
+    ["return new MovingShotSolution(", C.blue],
+    ["  v, theta, fromRadians(rel), vt, t);", C.blue],
+  ] },
 ];
-const slots = slotDefs.map((sd, i) => ({
-  transform: `translate(${sd.x} ${sd.y}) scale(${sd.s})`,
-  variants: [sd.gens[0](1000 + i * 97), sd.gens[1](5000 + i * 131)] as Prim[][],
-}));
+const codeGroup: Group = {
+  name: "code",
+  clusters: codeBlocks.map((b) => ({ transform: `translate(${b.x} ${b.y})`, prims: codeBlock(0, 0, b.lines) })),
+};
+
+const groups: Group[] = [abstractGroup, mathGroup, codeGroup];
+
+// ================= GROUP 4 — MARKER (fat white strokes) =================
+// each stroke is a tapered ribbon (thick at the tip, thinning toward the tail)
+// revealed by a masked stroke that sweeps along the centerline like a real marker.
+function sampleCurve(ctrl: [number, number][], per = 16): [number, number][] {
+  const n = ctrl.length;
+  const at = (i: number) => ctrl[Math.max(0, Math.min(n - 1, i))];
+  const P: [number, number][] = [];
+  for (let i = 0; i < n - 1; i++) {
+    const p0 = at(i - 1), p1 = at(i), p2 = at(i + 1), p3 = at(i + 2);
+    for (let j = 0; j < per; j++) {
+      const t = j / per, t2 = t * t, t3 = t2 * t;
+      P.push([
+        0.5 * (2 * p1[0] + (-p0[0] + p2[0]) * t + (2 * p0[0] - 5 * p1[0] + 4 * p2[0] - p3[0]) * t2 + (-p0[0] + 3 * p1[0] - 3 * p2[0] + p3[0]) * t3),
+        0.5 * (2 * p1[1] + (-p0[1] + p2[1]) * t + (2 * p0[1] - 5 * p1[1] + 4 * p2[1] - p3[1]) * t2 + (-p0[1] + 3 * p1[1] - 3 * p2[1] + p3[1]) * t3),
+      ]);
+    }
+  }
+  P.push(ctrl[n - 1]);
+  return P;
+}
+type Marker = { ribbon: string; center: string; tip: [number, number]; tail: [number, number]; w: number };
+function ribbonFromPoints(P: [number, number][], maxW: number): Marker {
+  const left: string[] = [], right: string[] = [];
+  for (let j = 0; j < P.length; j++) {
+    const t = j / (P.length - 1);
+    const a = P[Math.max(0, j - 1)], b = P[Math.min(P.length - 1, j + 1)];
+    let nx = -(b[1] - a[1]), ny = b[0] - a[0];
+    const len = Math.hypot(nx, ny) || 1; nx /= len; ny /= len;
+    const hw = (maxW * (1 - 0.72 * t)) / 2;
+    left.push(`${f(P[j][0] + nx * hw)} ${f(P[j][1] + ny * hw)}`);
+    right.push(`${f(P[j][0] - nx * hw)} ${f(P[j][1] - ny * hw)}`);
+  }
+  return {
+    ribbon: "M" + left.join(" L") + " L" + right.reverse().join(" L") + " Z",
+    center: "M" + P.map((p) => `${f(p[0])} ${f(p[1])}`).join(" L"),
+    tip: P[0], tail: P[P.length - 1], w: maxW,
+  };
+}
+function markerStroke(seed: number): Marker {
+  const r = mulberry32(seed);
+  const n = 3 + Math.floor(r() * 2);
+  const ctrl: [number, number][] = [];
+  let x = 120 + r() * 1180, y = 120 + r() * 640, ang = r() * TAU;
+  for (let k = 0; k < n; k++) {
+    ctrl.push([x, y]);
+    const step = 280 + r() * 380;
+    ang += (r() * 2 - 1) * 1.7;
+    x = Math.max(50, Math.min(1390, x + Math.cos(ang) * step));
+    y = Math.max(50, Math.min(850, y + Math.sin(ang) * step));
+  }
+  return ribbonFromPoints(sampleCurve(ctrl, 16), 18 + r() * 18);
+}
+const markerData: Marker[] = Array.from({ length: 12 }, (_, i) => markerStroke(700 + i * 53));
+
+// raster infill — a 3D-printer extruder doing DIAGONAL (45°) infill. Each pass is its own
+// thick stroke; spacing < width so they overlap, and because they're separate translucent
+// strokes the overlaps read as brighter ridges (visible fused lines, not a flat block).
+function rasterPasses(): { passes: string[]; guide: string } {
+  const cx = 720, cy = 450;
+  const dx = Math.cos(Math.PI / 4), dy = Math.sin(Math.PI / 4); // pass direction (down-right)
+  const px = -dy, py = dx;                                       // perpendicular (stack)
+  const passLen = 1780, spacing = 22, n = Math.ceil(1780 / spacing);
+  const passes: string[] = [];
+  const guide: [number, number][] = [];
+  for (let i = 0; i <= n; i++) {
+    const off = (i - n / 2) * spacing;
+    const a: [number, number] = [cx + px * off - dx * passLen / 2, cy + py * off - dy * passLen / 2];
+    const b: [number, number] = [cx + px * off + dx * passLen / 2, cy + py * off + dy * passLen / 2];
+    const s = i % 2 === 0 ? a : b, e = i % 2 === 0 ? b : a; // alternate direction (serpentine)
+    passes.push(`M${f(s[0])} ${f(s[1])} L${f(e[0])} ${f(e[1])}`);
+    guide.push(s, e);
+  }
+  return { passes, guide: "M" + guide.map((p) => `${f(p[0])} ${f(p[1])}`).join(" L") };
+}
+const raster = rasterPasses();
+
+// a casually-pinned tilt per cluster so nothing sits perfectly flat
+const tiltAngles = [-8, 6, -4, 9, -6, 3, -9, 7, -3, 5, -7, 4, -5, 8, -2];
+const tiltOf = (gi: number, ci: number) => tiltAngles[(gi * 7 + ci * 5) % tiltAngles.length];
 ---
 
 <div class="scribble-bg" aria-hidden="true">
   <svg viewBox="0 0 1440 900" preserveAspectRatio="xMidYMid slice" fill="none">
-    {slots.map((slot, si) => (
-      <g class="scribble-slot" data-slot={si} transform={slot.transform}>
-        {slot.variants.map((prims, vi) => (
-          <g class="variant" data-variant={vi} hidden={vi !== 0}>
-            {prims.map((p) =>
-              p.t === "p" ? (
-                <path class:list={["ink", p.faint && "faint"]} pathLength="1" d={p.d} style={`--c:${p.c}`} />
-              ) : p.t === "c" ? (
-                <circle class:list={["ink", p.faint && "faint"]} pathLength="1" cx={p.cx} cy={p.cy} r={p.r} style={`--c:${p.c}`} />
-              ) : (
-                <line class:list={["ink", p.faint && "faint"]} pathLength="1" x1={p.x1} y1={p.y1} x2={p.x2} y2={p.y2} style={`--c:${p.c}`} />
-              )
-            )}
+    {groups.map((group, gi) => (
+      <g class="scribble-group is-hidden" data-group={group.name}>
+        {group.clusters.map((cl, ci) => (
+          <g transform={cl.transform}>
+            <g class="tilt" style={`--tilt:${tiltOf(gi, ci)}deg`}>
+              <g class="drift" style={`--phase:${ci}`}>
+              {cl.prims.map((p) =>
+                p.t === "p" ? (
+                  <path class:list={["ink", p.faint && "faint"]} pathLength="1" d={p.d} style={`--c:${p.c}`} />
+                ) : p.t === "c" ? (
+                  <circle class:list={["ink", p.faint && "faint"]} pathLength="1" cx={p.cx} cy={p.cy} r={p.r} style={`--c:${p.c}`} />
+                ) : p.t === "l" ? (
+                  <line class:list={["ink", p.faint && "faint"]} pathLength="1" x1={p.x1} y1={p.y1} x2={p.x2} y2={p.y2} style={`--c:${p.c}`} />
+                ) : (
+                  <text class:list={["ink-text", `f-${p.font}`, p.faint && "faint"]} x={p.x} y={p.y} font-size={p.size} style={`--c:${p.c}`}>{p.s}</text>
+                )
+              )}
+              </g>
+            </g>
           </g>
         ))}
       </g>
     ))}
+
+    <g class="scribble-group is-hidden" data-group="marker">
+      <defs>
+        <filter id="mk-rough" x="-4%" y="-4%" width="108%" height="108%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.014 0.02" numOctaves="2" seed="9" result="n" />
+          <feDisplacementMap in="SourceGraphic" in2="n" scale="3.5" xChannelSelector="R" yChannelSelector="G" />
+        </filter>
+        {markerData.map((m, i) => (
+          <linearGradient id={`mkg-${i}`} gradientUnits="userSpaceOnUse" x1={m.tip[0]} y1={m.tip[1]} x2={m.tail[0]} y2={m.tail[1]}>
+            <stop offset="0" stop-color="#fdfdfb" stop-opacity="0.62" />
+            <stop offset="0.65" stop-color="#fdfdfb" stop-opacity="0.28" />
+            <stop offset="1" stop-color="#fdfdfb" stop-opacity="0.05" />
+          </linearGradient>
+        ))}
+        {markerData.map((m, i) => (
+          <mask id={`mkm-${i}`} maskUnits="userSpaceOnUse" x="0" y="0" width="1440" height="900">
+            <path class="mk-reveal" d={m.center} fill="none" stroke="#fff" stroke-width={m.w + 12} stroke-linecap="round" stroke-linejoin="round" pathLength="1" />
+          </mask>
+        ))}
+      </defs>
+      <g class="drift" style="--phase:0" filter="url(#mk-rough)">
+        {markerData.map((m, i) => (
+          <path class="mk-fill" d={m.ribbon} fill={`url(#mkg-${i})`} mask={`url(#mkm-${i})`} />
+        ))}
+      </g>
+    </g>
+
+    <g class="scribble-group is-hidden" data-group="marker-raster">
+      <defs>
+        <filter id="mk-rough-r" x="-3%" y="-3%" width="106%" height="106%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.012 0.016" numOctaves="2" seed="4" result="n" />
+          <feDisplacementMap in="SourceGraphic" in2="n" scale="2.4" xChannelSelector="R" yChannelSelector="G" />
+        </filter>
+      </defs>
+      <g filter="url(#mk-rough-r)">
+        {raster.passes.map((d) => (
+          <path class="extruder" d={d} fill="none" stroke="#fdfdfb" stroke-width="27"
+            stroke-linecap="round" pathLength="1" />
+        ))}
+      </g>
+      <circle class="extruder-head" r="8" cx="0" cy="0" style={`offset-path: path('${raster.guide}')`} />
+    </g>
   </svg>
 </div>
 
@@ -223,35 +535,111 @@ const slots = slotDefs.map((sd, i) => ({
   .ink {
     fill: none;
     stroke: var(--c, #ffb454);
-    stroke-width: 1.6;
+    stroke-width: 1.5;
     stroke-linecap: round;
     stroke-linejoin: round;
-    stroke-opacity: 0.5;
+    stroke-opacity: 0.42;
     vector-effect: non-scaling-stroke;
     stroke-dasharray: 1;
     stroke-dashoffset: 1;
   }
-  .ink.faint { stroke-opacity: 0.22; }
+  .ink.faint { stroke-opacity: 0.2; }
 
-  .variant.drawn .ink { stroke-dashoffset: 0; }
-  .variant.drawing .ink {
-    animation: sb-draw 1.5s ease forwards;
-    animation-delay: calc(var(--i, 0) * 45ms);
+  .ink-text {
+    fill: var(--c, #ffb454);
+    fill-opacity: 0.32;
+    clip-path: inset(0 100% 0 0);
+    white-space: pre;
   }
-  .variant.erasing .ink {
-    animation: sb-erase 0.85s ease forwards;
-    animation-delay: calc(var(--i, 0) * 18ms);
+  .ink-text.faint { fill-opacity: 0.2; }
+  .f-mono { font-family: var(--font-mono); letter-spacing: -0.01em; }
+  .f-math { font-family: var(--font-body); font-style: italic; }
+  .f-hand { font-family: var(--font-hand); }
+
+  .scribble-group { opacity: 1; }
+  .scribble-group.is-hidden { display: none; }
+  /* crossfade the outgoing group out while the next one draws itself in */
+  .scribble-group.fading { opacity: 0; transition: opacity 1.15s ease; }
+  .scribble-group.drawn .ink { stroke-dashoffset: 0; }
+  .scribble-group.drawn .ink-text { clip-path: inset(0 0 0 0); }
+
+  /* draw in, then keep shimmering (opacity) so a held group never looks frozen */
+  .scribble-group.drawing .ink {
+    animation: sb-draw 1.4s ease forwards, sb-shimmer 5s ease-in-out infinite;
+    animation-delay: calc(var(--i, 0) * 32ms), calc(var(--i, 0) * -160ms);
+  }
+  .scribble-group.drawing .ink-text {
+    animation: sb-write 0.8s ease forwards, sb-shimmer 5.6s ease-in-out infinite;
+    animation-delay: calc(var(--i, 0) * 32ms), calc(var(--i, 0) * -190ms);
+  }
+  .scribble-group.erasing .ink {
+    animation: sb-erase 0.8s ease forwards;
+    animation-delay: calc(var(--i, 0) * 12ms);
+  }
+  .scribble-group.erasing .ink-text {
+    animation: sb-unwrite 0.5s ease forwards;
+    animation-delay: calc(var(--i, 0) * 12ms);
   }
   @keyframes sb-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
   @keyframes sb-erase { from { stroke-dashoffset: 0; } to { stroke-dashoffset: 1; } }
+  @keyframes sb-write { to { clip-path: inset(0 0 0 0); } }
+  @keyframes sb-unwrite { to { clip-path: inset(0 0 0 100%); } }
+  @keyframes sb-shimmer { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
 
-  /* margins collapse on small screens — hide the art there */
-  @media (max-width: 820px) {
-    .scribble-bg { display: none; }
+  /* fat marker strokes: masked reveal sweeps along the centerline */
+  .mk-reveal { stroke-dasharray: 1; stroke-dashoffset: 1; }
+  .scribble-group.drawn .mk-reveal { stroke-dashoffset: 0; }
+  .scribble-group.drawing .mk-reveal {
+    animation: mk-draw 2.6s ease forwards;
+    animation-delay: calc(var(--i, 0) * 135ms);
   }
+  @keyframes mk-draw { to { stroke-dashoffset: 0; } }
+
+  /* raster / 3D-printer extruder: one serpentine stroke + a nozzle that leads it */
+  .extruder { stroke-opacity: 0.2; stroke-dasharray: 1; stroke-dashoffset: 1; }
+  .scribble-group.drawn .extruder { stroke-dashoffset: 0; }
+  .scribble-group.drawing .extruder {
+    animation: mk-extrude 0.85s ease forwards;
+    animation-delay: calc(var(--i, 0) * 100ms);
+  }
+  @keyframes mk-extrude { to { stroke-dashoffset: 0; } }
+
+  .extruder-head { fill: #ffb454; offset-distance: 0%; offset-rotate: 0deg; opacity: 0; }
+  .scribble-group.drawing .extruder-head { animation: mk-head 8.4s linear forwards; }
+  @keyframes mk-head {
+    0% { offset-distance: 0%; opacity: 1; }
+    90% { opacity: 1; }
+    100% { offset-distance: 100%; opacity: 0; }
+  }
+
+  /* casually-pinned rotation per cluster — rotates around its own bbox center */
+  .tilt {
+    transform: rotate(var(--tilt, 0deg));
+    transform-box: fill-box;
+    transform-origin: center;
+  }
+  /* each cluster slowly drifts on its own phase — ambient life while held */
+  .drift {
+    animation: sb-float 15s ease-in-out infinite;
+    animation-delay: calc(var(--phase, 0) * -2.1s);
+    will-change: transform;
+  }
+  @keyframes sb-float {
+    0% { transform: translate(0, 0); }
+    25% { transform: translate(5px, -6px); }
+    50% { transform: translate(-4px, 4px); }
+    75% { transform: translate(4px, 5px); }
+    100% { transform: translate(0, 0); }
+  }
+
+  @media (max-width: 820px) { .scribble-bg { display: none; } }
   @media (prefers-reduced-motion: reduce) {
     .ink { stroke-dashoffset: 0 !important; animation: none !important; }
-    .variant[hidden] { display: none; }
+    .ink-text { clip-path: none !important; animation: none !important; }
+    .mk-reveal { stroke-dashoffset: 0 !important; animation: none !important; }
+    .extruder { stroke-dashoffset: 0 !important; animation: none !important; }
+    .extruder-head { opacity: 0 !important; animation: none !important; }
+    .drift { animation: none !important; transform: none !important; }
   }
 </style>
 
@@ -259,66 +647,66 @@ const slots = slotDefs.map((sd, i) => ({
   function initScribbles(root: ParentNode) {
     const svg = root.querySelector(".scribble-bg svg");
     if (!svg) return;
-
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const slots = Array.from(svg.querySelectorAll<SVGGElement>(".scribble-slot"));
+    const groups = Array.from(svg.querySelectorAll<SVGGElement>(".scribble-group"));
+    if (!groups.length) return;
 
-    for (const slot of slots) {
-      const variants = Array.from(slot.querySelectorAll<SVGGElement>(":scope > .variant"));
-      for (const v of variants) {
-        Array.from(v.querySelectorAll<SVGElement>(".ink")).forEach((el, i) =>
-          el.style.setProperty("--i", String(i)),
-        );
-      }
-      if (reduce) {
-        variants.forEach((v, i) => {
-          v.hidden = i !== 0;
-          if (i === 0) v.classList.add("drawn");
-        });
-      }
+    // draw order for a nice sequential reveal
+    for (const g of groups) {
+      Array.from(g.querySelectorAll<SVGElement>(".ink, .ink-text, .mk-reveal, .extruder")).forEach((el, i) =>
+        el.style.setProperty("--i", String(i)),
+      );
     }
-    if (reduce) return;
+
+    if (reduce) {
+      groups[0].classList.remove("is-hidden");
+      groups[0].classList.add("drawn");
+      return;
+    }
 
     const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    const count = (g: Element) => g.querySelectorAll(".ink, .ink-text, .mk-reveal, .extruder").length;
     let running = true;
+    let looping = false;
+    let last = -1;
+    let current: SVGGElement | null = null;
 
-    slots.forEach((slot, si) => {
-      const variants = Array.from(slot.querySelectorAll<SVGGElement>(":scope > .variant"));
-      const drawMs = (v: Element) => v.querySelectorAll(".ink").length * 45 + 1500;
-      const eraseMs = (v: Element) => v.querySelectorAll(".ink").length * 18 + 850;
-      let k = 0;
-      let looping = false;
+    async function cycle() {
+      if (looping) return;
+      looping = true;
+      while (running) {
+        let idx = Math.floor(Math.random() * groups.length);
+        if (groups.length > 1 && idx === last) idx = (idx + 1) % groups.length;
+        last = idx;
+        const next = groups[idx];
+        const n = count(next);
+        const grp = next.dataset.group;
+        const hold = grp === "marker-raster" ? 9500 : grp === "code" ? 9000 : grp === "math" ? 8000 : grp === "marker" ? 7800 : 6500;
 
-      async function loop() {
-        if (looping) return;
-        looping = true;
-        while (running) {
-          const v = variants[k % variants.length];
-          v.hidden = false;
-          v.classList.remove("erasing");
-          v.classList.add("drawing");
-          await wait(drawMs(v) + 3600 + Math.random() * 2600); // hold, desynced per slot
-          if (!running) break;
-          v.classList.remove("drawing");
-          v.classList.add("erasing");
-          await wait(eraseMs(v));
-          v.classList.remove("erasing");
-          v.hidden = true;
-          k++;
-          await wait(300);
+        // incoming: restart its draw-in cleanly
+        next.classList.remove("is-hidden", "fading", "drawn", "drawing");
+        void next.getBoundingClientRect();
+        next.classList.add("drawing");
+
+        // outgoing: crossfade out at the same time (keeps its strokes drawn, just fades)
+        if (current && current !== next) {
+          const c = current;
+          c.classList.add("fading");
+          setTimeout(() => c.classList.add("is-hidden"), 1300);
+          setTimeout(() => c.classList.remove("fading", "drawing"), 1400);
         }
-        looping = false;
-      }
-      // stagger each slot's first draw so they don't all appear at once
-      setTimeout(loop, si * 650 + Math.random() * 500);
+        current = next;
 
-      slot.dataset.loop = "1";
-      (slot as any).__loop = loop;
-    });
+        await wait(n * 32 + 1400 + hold);
+        if (!running) break;
+      }
+      looping = false;
+    }
+    cycle();
 
     document.addEventListener("visibilitychange", () => {
       running = document.visibilityState === "visible";
-      if (running) slots.forEach((s) => (s as any).__loop?.());
+      if (running) cycle();
     });
   }
 
