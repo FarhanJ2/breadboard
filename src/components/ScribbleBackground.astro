@@ -441,42 +441,6 @@ function markerStroke(seed: number): Marker {
 }
 const markerData: Marker[] = Array.from({ length: 12 }, (_, i) => markerStroke(700 + i * 53));
 
-// raster infill — a 3D-printer extruder doing DIAGONAL (45°) infill. Each pass is its own
-// thick stroke; spacing < width so they overlap, and because they're separate translucent
-// strokes the overlaps read as brighter ridges (visible fused lines, not a flat block).
-type Pass = { d: string; w: number; o: number };
-function rasterPasses(): { passes: Pass[]; guide: string } {
-  const r = mulberry32(2026);
-  const cx = 720, cy = 450;
-  const dx = Math.cos(Math.PI / 4), dy = Math.sin(Math.PI / 4); // pass direction (down-right)
-  const px = -dy, py = dx;                                       // perpendicular (stack)
-  const passLen = 1780, spacing = 22, n = Math.ceil(1780 / spacing);
-  const passes: Pass[] = [];
-  const guide: [number, number][] = [];
-  for (let i = 0; i <= n; i++) {
-    const off = (i - n / 2) * spacing;
-    const a: [number, number] = [cx + px * off - dx * passLen / 2, cy + py * off - dy * passLen / 2];
-    const b: [number, number] = [cx + px * off + dx * passLen / 2, cy + py * off + dy * passLen / 2];
-    const s = i % 2 === 0 ? a : b, e = i % 2 === 0 ? b : a; // alternate direction (serpentine)
-    // a real bead wanders off the ideal line; wobble peaks mid-pass and goes to
-    // zero at both ends so the serpentine turnarounds still line up
-    const segs = 5;
-    const pts: [number, number][] = [];
-    for (let k = 0; k <= segs; k++) {
-      const t = k / segs;
-      const wob = (r() * 2 - 1) * 2.6 * Math.sin(Math.PI * t);
-      pts.push([s[0] + (e[0] - s[0]) * t + px * wob, s[1] + (e[1] - s[1]) * t + py * wob]);
-    }
-    passes.push({
-      d: "M" + pts.map((p) => `${f(p[0])} ${f(p[1])}`).join(" L"),
-      w: 23 + r() * 7,          // extrusion width isn't perfectly consistent
-      o: 0.13 + r() * 0.11,     // nor is how much material each pass lays down
-    });
-    guide.push(pts[0], pts[pts.length - 1]);
-  }
-  return { passes, guide: "M" + guide.map((p) => `${f(p[0])} ${f(p[1])}`).join(" L") };
-}
-const raster = rasterPasses();
 
 // a casually-pinned tilt per cluster so nothing sits perfectly flat
 const tiltAngles = [-8, 6, -4, 9, -6, 3, -9, 7, -3, 5, -7, 4, -5, 8, -2];
@@ -549,32 +513,6 @@ const tiltOf = (gi: number, ci: number) => tiltAngles[(gi * 7 + ci * 5) % tiltAn
       </g>
     </g>
 
-    <g class="scribble-group is-hidden" data-group="marker-raster">
-      <defs>
-        <filter id="mk-rough-r" x="-3%" y="-3%" width="106%" height="106%">
-          {/* same two-stage ink treatment as #mk-rough: wobble the edges, then
-              break the material up so the beads aren't flat bands */}
-          <feTurbulence type="fractalNoise" baseFrequency="0.012 0.016" numOctaves="2" seed="4" result="n" />
-          <feDisplacementMap in="SourceGraphic" in2="n" scale="2.4" xChannelSelector="R" yChannelSelector="G" result="rough" />
-          {/* streaks run ALONG the 45° pass direction here, not across it */}
-          <feTurbulence type="fractalNoise" baseFrequency="0.5 0.5" numOctaves="3" seed="7" result="grain" />
-          <feColorMatrix in="grain" type="matrix" result="grainA"
-            values="0 0 0 0 1
-                    0 0 0 0 1
-                    0 0 0 0 1
-                    0.34 0 0 0 0.66" />
-          <feComposite in="rough" in2="grainA" operator="arithmetic" k1="1" k2="0" k3="0" k4="0" />
-        </filter>
-      </defs>
-      <g filter="url(#mk-rough-r)">
-        {raster.passes.map((p) => (
-          <path class="extruder" d={p.d} fill="none" stroke="#fdfdfb" stroke-width={f(p.w)}
-            stroke-linecap="round" stroke-linejoin="round" pathLength="1"
-            style={`--o:${p.o.toFixed(3)}`} />
-        ))}
-      </g>
-      <circle class="extruder-head" r="8" cx="0" cy="0" style={`offset-path: path('${raster.guide}')`} />
-    </g>
   </svg>
 </div>
 
@@ -651,22 +589,6 @@ const tiltOf = (gi: number, ci: number) => tiltAngles[(gi * 7 + ci * 5) % tiltAn
   }
   @keyframes mk-draw { to { stroke-dashoffset: 0; } }
 
-  /* raster / 3D-printer extruder: one serpentine stroke + a nozzle that leads it */
-  .extruder { stroke-opacity: var(--o, 0.2); stroke-dasharray: 1; stroke-dashoffset: 1; }
-  .scribble-group.drawn .extruder { stroke-dashoffset: 0; }
-  .scribble-group.drawing .extruder {
-    animation: mk-extrude 0.85s ease forwards;
-    animation-delay: calc(var(--i, 0) * 100ms);
-  }
-  @keyframes mk-extrude { to { stroke-dashoffset: 0; } }
-
-  .extruder-head { fill: #ffb454; offset-distance: 0%; offset-rotate: 0deg; opacity: 0; }
-  .scribble-group.drawing .extruder-head { animation: mk-head 8.4s linear forwards; }
-  @keyframes mk-head {
-    0% { offset-distance: 0%; opacity: 1; }
-    90% { opacity: 1; }
-    100% { offset-distance: 100%; opacity: 0; }
-  }
 
   /* casually-pinned rotation per cluster — rotates around its own bbox center */
   .tilt {
@@ -693,8 +615,6 @@ const tiltOf = (gi: number, ci: number) => tiltAngles[(gi * 7 + ci * 5) % tiltAn
     .ink { stroke-dashoffset: 0 !important; animation: none !important; }
     .ink-text { clip-path: none !important; animation: none !important; }
     .mk-reveal { stroke-dashoffset: 0 !important; animation: none !important; }
-    .extruder { stroke-dashoffset: 0 !important; animation: none !important; }
-    .extruder-head { opacity: 0 !important; animation: none !important; }
     .drift { animation: none !important; transform: none !important; }
   }
 </style>
@@ -709,7 +629,7 @@ const tiltOf = (gi: number, ci: number) => tiltAngles[(gi * 7 + ci * 5) % tiltAn
 
     // draw order for a nice sequential reveal
     for (const g of groups) {
-      Array.from(g.querySelectorAll<SVGElement>(".ink, .ink-text, .mk-reveal, .extruder")).forEach((el, i) =>
+      Array.from(g.querySelectorAll<SVGElement>(".ink, .ink-text, .mk-reveal")).forEach((el, i) =>
         el.style.setProperty("--i", String(i)),
       );
     }
@@ -721,7 +641,7 @@ const tiltOf = (gi: number, ci: number) => tiltAngles[(gi * 7 + ci * 5) % tiltAn
     }
 
     const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
-    const count = (g: Element) => g.querySelectorAll(".ink, .ink-text, .mk-reveal, .extruder").length;
+    const count = (g: Element) => g.querySelectorAll(".ink, .ink-text, .mk-reveal").length;
     let running = true;
     let looping = false;
     let last = -1;
@@ -737,7 +657,7 @@ const tiltOf = (gi: number, ci: number) => tiltAngles[(gi * 7 + ci * 5) % tiltAn
         const next = groups[idx];
         const n = count(next);
         const grp = next.dataset.group;
-        const hold = grp === "marker-raster" ? 9500 : grp === "code" ? 9000 : grp === "math" ? 8000 : grp === "marker" ? 7800 : 6500;
+        const hold = grp === "code" ? 9000 : grp === "math" ? 8000 : grp === "marker" ? 7800 : 6500;
 
         // incoming: restart its draw-in cleanly
         next.classList.remove("is-hidden", "fading", "drawn", "drawing");
