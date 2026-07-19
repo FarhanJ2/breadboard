@@ -1,0 +1,424 @@
+---
+/**
+ * SOTMWidget
+ * ----------
+ * Interactive explainer for shoot-on-the-move: drag the robot's velocity vector
+ * and watch the virtual target slide off the hub, with the turret following it.
+ *
+ * The LUT below is lifted verbatim from ShooterStructure.loadLUTSolved(), so the
+ * exit velocity / hood angle / time-of-flight readouts are the robot's real
+ * numbers rather than invented ones.
+ *
+ * The solver is deliberately the simple version: fixed-point iterate
+ *   virtualTarget = hub - v * TOF(|virtualTarget - turret|)
+ * twice, which is plenty stable for a teaching widget. The flight code's Newton
+ * step, drag term and launch-latency compensation are all omitted on purpose —
+ * they'd change the numbers by a few percent and the interaction not at all.
+ */
+---
+
+<figure class="sotm" data-sotm>
+  <div class="sotm__stage">
+    <svg viewBox="0 0 744 595" role="img" aria-label="Top-down shoot-on-the-move diagram">
+      <g class="sotm__grid" aria-hidden="true"></g>
+
+      {/* hub → virtual target: how far the aim point has been led */}
+      <line class="sotm__lead" data-lead />
+      {/* the shot the robot would take if it were parked */}
+      <line class="sotm__static" data-static-aim />
+      {/* the shot it actually takes */}
+      <line class="sotm__aim" data-aim />
+
+      <g class="sotm__hub" data-hub>
+        <circle class="sotm__hub-ring" r="17" />
+        <circle class="sotm__hub-ring sotm__hub-ring--in" r="9" />
+        <circle class="sotm__hub-dot" r="3.5" />
+      </g>
+
+      <g data-vt class="sotm__vt">
+        <circle class="sotm__vt-ring" r="11" />
+        <circle class="sotm__vt-dot" r="4" />
+      </g>
+
+      <g data-robot class="sotm__robot">
+        <rect x="-13" y="-13" width="26" height="26" rx="5" />
+        <circle r="3" class="sotm__turret" />
+      </g>
+
+      {/* velocity vector — the thing you drag */}
+      <g class="sotm__vel" data-vel>
+        <line data-vel-line />
+        <path data-vel-head />
+      </g>
+      <circle class="sotm__handle" data-handle r="13" tabindex="0"
+        role="slider" aria-label="Robot velocity vector" />
+
+      <g class="sotm__labels" aria-hidden="true">
+        <text data-label-hub class="sotm__tag">HUB</text>
+        <text data-label-vt class="sotm__tag sotm__tag--vt">VIRTUAL TARGET</text>
+        <text data-label-robot class="sotm__tag">ROBOT</text>
+      </g>
+    </svg>
+  </div>
+
+  <div class="sotm__readout">
+    <div class="sotm__stat"><span class="sotm__k">robot speed</span><b data-r-speed>0.00 <i>m/s</i></b></div>
+    <div class="sotm__stat"><span class="sotm__k">turret lead</span><b data-r-lead>0.0<i>°</i></b></div>
+    <div class="sotm__stat"><span class="sotm__k">virtual dist</span><b data-r-dist>0.00 <i>m</i></b></div>
+    <div class="sotm__stat"><span class="sotm__k">exit velocity</span><b data-r-exit>0.00 <i>m/s</i></b></div>
+    <div class="sotm__stat"><span class="sotm__k">hood angle</span><b data-r-hood>0.0<i>°</i></b></div>
+    <div class="sotm__stat"><span class="sotm__k">time of flight</span><b data-r-tof>0.000 <i>s</i></b></div>
+  </div>
+
+  <div class="sotm__foot">
+    <figcaption class="sotm__hint">
+      drag the amber arrow to set the robot's velocity
+      <span class="sotm__oor" data-oor>· lead has pushed the target outside the shot table (1.74–6.20 m) — values clamped</span>
+    </figcaption>
+    <button class="sotm__reset" type="button" data-reset>reset to stationary</button>
+  </div>
+</figure>
+
+<style>
+  .sotm {
+    --hub: var(--blueprint, #8aa2e8);
+    --vt: var(--phosphor, #7ee0a8);
+    --vel: var(--amber, #ffb454);
+    margin: 2.2rem 0;
+    color: var(--ink-soft);
+  }
+  .sotm__stage {
+    border: 1px solid var(--line-soft);
+    border-radius: 12px;
+    background: var(--bg-inset);
+    overflow: hidden;
+  }
+  .sotm svg { display: block; width: 100%; height: auto; touch-action: none; }
+
+  .sotm__grid line { stroke: var(--line); stroke-width: 1; opacity: 0.5; }
+
+  .sotm__hub-ring { fill: none; stroke: var(--hub); stroke-width: 1.5; opacity: 0.5; }
+  .sotm__hub-ring--in { opacity: 0.75; }
+  .sotm__hub-dot { fill: var(--hub); }
+
+  .sotm__static { stroke: var(--hub); stroke-width: 1.5; stroke-dasharray: 5 5; opacity: 0.45; }
+  .sotm__aim { stroke: var(--vt); stroke-width: 2; }
+  .sotm__lead { stroke: var(--vel); stroke-width: 1.5; stroke-dasharray: 2 4; opacity: 0.8; }
+
+  .sotm__vt-ring { fill: none; stroke: var(--vt); stroke-width: 1.5; opacity: 0.6; }
+  .sotm__vt-dot { fill: var(--vt); }
+
+  .sotm__robot rect { fill: #1b2030; stroke: var(--ink-faint); stroke-width: 1.5; }
+  .sotm__turret { fill: var(--ink-soft); }
+
+  .sotm__vel line { stroke: var(--vel); stroke-width: 2.5; stroke-linecap: round; }
+  .sotm__vel path { fill: var(--vel); }
+  .sotm__handle {
+    fill: var(--vel);
+    fill-opacity: 0.14;
+    stroke: var(--vel);
+    stroke-width: 1.5;
+    cursor: grab;
+  }
+  .sotm__handle:hover { fill-opacity: 0.3; }
+  .sotm[data-dragging] .sotm__handle { cursor: grabbing; fill-opacity: 0.36; }
+  .sotm__handle:focus-visible { outline: 2px solid var(--vel); outline-offset: 3px; }
+
+  .sotm__tag {
+    font-family: var(--font-mono, monospace);
+    font-size: 9.5px;
+    letter-spacing: 0.14em;
+    fill: var(--ink-faint);
+  }
+  .sotm__tag--vt { fill: var(--vt); opacity: 0.85; }
+
+  .sotm__readout {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 1px;
+    margin-top: 1px;
+    background: var(--line-soft);
+    border: 1px solid var(--line-soft);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .sotm__stat {
+    background: var(--bg-inset);
+    padding: 9px 12px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .sotm__k {
+    font-family: var(--font-mono, monospace);
+    font-size: 9.5px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+  .sotm__stat b {
+    font-family: var(--font-mono, monospace);
+    font-size: 0.95rem;
+    font-weight: 500;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+  }
+  .sotm__stat i { font-style: normal; font-size: 0.72em; color: var(--ink-faint); }
+
+  .sotm__foot {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 11px;
+  }
+  .sotm__hint,
+  .sotm__reset {
+    font-family: var(--font-mono, monospace);
+    font-size: 11px;
+    letter-spacing: 0.07em;
+    color: var(--ink-faint);
+  }
+  .sotm__reset {
+    background: none;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 5px 11px;
+    cursor: pointer;
+    transition: color 0.16s ease, border-color 0.16s ease;
+  }
+  .sotm__reset:hover { color: var(--vel); border-color: var(--vel); }
+
+  @media (max-width: 620px) { .sotm__readout { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+  @media (max-width: 380px) { .sotm__readout { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+  /* the LUT only covers 1.74-6.20 m; say so rather than silently saturating */
+  .sotm__oor { display: none; color: var(--rust, #e08a6a); }
+  .sotm[data-oor] .sotm__oor { display: inline; }
+  .sotm[data-oor] [data-r-dist] { color: var(--rust, #e08a6a); }
+</style>
+
+<script>
+  type Pt = { x: number; y: number };
+
+  // ShooterStructure.loadLUTSolved() — commanded wheel m/s, hood degrees, TOF seconds
+  const LUT_D = [1.743, 2.086, 2.429, 2.771, 3.114, 3.457, 3.8, 4.143, 4.486, 4.829, 5.171, 5.514, 5.857, 6.2];
+  const LUT_V = [10.89, 11.13, 10.57, 10.95, 11.33, 11.74, 12.06, 12.42, 12.77, 13.12, 13.49, 13.86, 14.19, 14.59];
+  const LUT_H = [73, 71, 61, 59, 58, 58, 56, 55, 54, 53, 53, 53, 52, 53];
+  const LUT_T = [1.11, 1.125, 0.894, 0.937, 0.975, 1.035, 1.039, 1.066, 1.09, 1.111, 1.157, 1.201, 1.216, 1.285];
+
+  // Field metres → svg units. The hub sits centrally and the speed is capped at
+  // a realistic shooting-while-moving 3.5 m/s so the virtual target stays on
+  // canvas — at 5 m/s the lead runs to ~5m and the target leaves the frame.
+  const S = 62, VIEW_H = 9.6;
+  const HUB: Pt = { x: 4.6, y: 5.0 };
+  const ROBOT: Pt = { x: 8.0, y: 3.2 };
+  const MAX_SPEED = 3.5;
+  const VEL_PX = 44;     // svg units per m/s when drawing the arrow
+  // calibrated span of the shot table; outside it every readout is clamped
+  const LUT_MIN = 1.743, LUT_MAX = 6.2;
+
+  const px = (p: Pt): Pt => ({ x: p.x * S, y: (VIEW_H - p.y) * S });
+  const dist = (a: Pt, b: Pt) => Math.hypot(a.x - b.x, a.y - b.y);
+
+  /** Linear interpolation on the LUT, clamped at both ends (as MathUtil.clamp does). */
+  function lut(table: number[], d: number): number {
+    if (d <= LUT_D[0]) return table[0];
+    if (d >= LUT_D[LUT_D.length - 1]) return table[table.length - 1];
+    let i = 1;
+    while (LUT_D[i] < d) i++;
+    const t = (d - LUT_D[i - 1]) / (LUT_D[i] - LUT_D[i - 1]);
+    return table[i - 1] + (table[i] - table[i - 1]) * t;
+  }
+
+  /**
+   * virtualTarget = hub - velocity * timeOfFlight, where the time of flight
+   * itself depends on the distance to that virtual target. Two fixed-point
+   * passes is enough to settle it at these speeds.
+   */
+  function solve(vx: number, vy: number) {
+    let tof = lut(LUT_T, dist(ROBOT, HUB));
+    let vt: Pt = HUB;
+    for (let i = 0; i < 2; i++) {
+      vt = { x: HUB.x - vx * tof, y: HUB.y - vy * tof };
+      tof = lut(LUT_T, dist(ROBOT, vt));
+    }
+    const d = dist(ROBOT, vt);
+    return { vt, tof, d, exit: lut(LUT_V, d), hood: lut(LUT_H, d) };
+  }
+
+  function initSotm(root: HTMLElement): () => void {
+    const svg = root.querySelector("svg")!;
+    const q = <T extends Element>(sel: string) => root.querySelector<T>(sel)!;
+
+    const gGrid = q<SVGGElement>(".sotm__grid");
+    const elHub = q<SVGGElement>("[data-hub]");
+    const elRobot = q<SVGGElement>("[data-robot]");
+    const elVt = q<SVGGElement>("[data-vt]");
+    const elAim = q<SVGLineElement>("[data-aim]");
+    const elStatic = q<SVGLineElement>("[data-static-aim]");
+    const elLead = q<SVGLineElement>("[data-lead]");
+    const elVelLine = q<SVGLineElement>("[data-vel-line]");
+    const elVelHead = q<SVGPathElement>("[data-vel-head]");
+    const elHandle = q<SVGCircleElement>("[data-handle]");
+    const lblHub = q<SVGTextElement>("[data-label-hub]");
+    const lblVt = q<SVGTextElement>("[data-label-vt]");
+    const lblRobot = q<SVGTextElement>("[data-label-robot]");
+    const out = {
+      speed: q<HTMLElement>("[data-r-speed]"), lead: q<HTMLElement>("[data-r-lead]"),
+      dist: q<HTMLElement>("[data-r-dist]"), exit: q<HTMLElement>("[data-r-exit]"),
+      hood: q<HTMLElement>("[data-r-hood]"), tof: q<HTMLElement>("[data-r-tof]"),
+    };
+
+    // static furniture
+    const frag = document.createDocumentFragment();
+    for (let m = 1; m < 12; m++) {
+      const l = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      l.setAttribute("x1", String(m * S)); l.setAttribute("y1", "0");
+      l.setAttribute("x2", String(m * S)); l.setAttribute("y2", String(VIEW_H * S));
+      frag.appendChild(l);
+    }
+    for (let m = 1; m < VIEW_H; m++) {
+      const l = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      l.setAttribute("x1", "0"); l.setAttribute("y1", String((VIEW_H - m) * S));
+      l.setAttribute("x2", "744"); l.setAttribute("y2", String((VIEW_H - m) * S));
+      frag.appendChild(l);
+    }
+    gGrid.appendChild(frag);
+
+    const hubPx = px(HUB), robotPx = px(ROBOT);
+    elHub.setAttribute("transform", `translate(${hubPx.x} ${hubPx.y})`);
+    elRobot.setAttribute("transform", `translate(${robotPx.x} ${robotPx.y})`);
+    lblHub.setAttribute("x", String(hubPx.x - 8)); lblHub.setAttribute("y", String(hubPx.y - 26));
+    lblRobot.setAttribute("x", String(robotPx.x - 12)); lblRobot.setAttribute("y", String(robotPx.y + 32));
+    elStatic.setAttribute("x1", String(robotPx.x)); elStatic.setAttribute("y1", String(robotPx.y));
+    elStatic.setAttribute("x2", String(hubPx.x)); elStatic.setAttribute("y2", String(hubPx.y));
+    elLead.setAttribute("x1", String(hubPx.x)); elLead.setAttribute("y1", String(hubPx.y));
+
+    const staticAngle = Math.atan2(HUB.y - ROBOT.y, HUB.x - ROBOT.x);
+    let vx = 0, vy = 0;
+
+    function render() {
+      const { vt, tof, d, exit, hood } = solve(vx, vy);
+      const vtPx = px(vt);
+
+      elVt.setAttribute("transform", `translate(${vtPx.x} ${vtPx.y})`);
+      elAim.setAttribute("x1", String(robotPx.x)); elAim.setAttribute("y1", String(robotPx.y));
+      elAim.setAttribute("x2", String(vtPx.x)); elAim.setAttribute("y2", String(vtPx.y));
+      elLead.setAttribute("x2", String(vtPx.x)); elLead.setAttribute("y2", String(vtPx.y));
+      // keep the tag inside the frame — a far lead can put the target on the edge
+      lblVt.setAttribute("x", String(Math.max(6, Math.min(650, vtPx.x - 30))));
+      lblVt.setAttribute("y", String(Math.max(14, vtPx.y - 20)));
+
+      // velocity arrow (y flips going into svg space)
+      const tipX = robotPx.x + vx * VEL_PX, tipY = robotPx.y - vy * VEL_PX;
+      const speed = Math.hypot(vx, vy);
+      elVelLine.setAttribute("x1", String(robotPx.x)); elVelLine.setAttribute("y1", String(robotPx.y));
+      elVelLine.setAttribute("x2", String(tipX)); elVelLine.setAttribute("y2", String(tipY));
+      if (speed > 0.06) {
+        const a = Math.atan2(tipY - robotPx.y, tipX - robotPx.x), w = 0.42, len = 13;
+        elVelHead.setAttribute("d",
+          `M${tipX} ${tipY} L${tipX - len * Math.cos(a - w)} ${tipY - len * Math.sin(a - w)} ` +
+          `L${tipX - len * Math.cos(a + w)} ${tipY - len * Math.sin(a + w)} Z`);
+        elVelHead.setAttribute("opacity", "1");
+      } else {
+        elVelHead.setAttribute("opacity", "0");
+      }
+      elHandle.setAttribute("cx", String(tipX));
+      elHandle.setAttribute("cy", String(tipY));
+
+      // wrap to (-180, 180] — the raw difference wraps the long way round and
+      // reads as e.g. -329.9° instead of +30.1° (MathUtil.angleModulus)
+      const rawLead = Math.atan2(vt.y - ROBOT.y, vt.x - ROBOT.x) - staticAngle;
+      const lead = (Math.atan2(Math.sin(rawLead), Math.cos(rawLead)) * 180) / Math.PI;
+      out.speed.innerHTML = `${speed.toFixed(2)} <i>m/s</i>`;
+      out.lead.innerHTML = `${lead >= 0 ? "+" : ""}${lead.toFixed(1)}<i>°</i>`;
+      out.dist.innerHTML = `${d.toFixed(2)} <i>m</i>`;
+      out.exit.innerHTML = `${exit.toFixed(2)} <i>m/s</i>`;
+      out.hood.innerHTML = `${hood.toFixed(1)}<i>°</i>`;
+      out.tof.innerHTML = `${tof.toFixed(3)} <i>s</i>`;
+      root.toggleAttribute("data-oor", d < LUT_MIN || d > LUT_MAX);
+      elHandle.setAttribute("aria-valuetext", `${speed.toFixed(2)} metres per second`);
+    }
+
+    // --- dragging ---
+    const pt = svg.createSVGPoint();
+    function setFromPointer(e: PointerEvent) {
+      const ctm = svg.getScreenCTM();
+      if (!ctm) return;
+      pt.x = e.clientX; pt.y = e.clientY;
+      const loc = pt.matrixTransform(ctm.inverse());
+      let nx = (loc.x - robotPx.x) / VEL_PX;
+      let ny = -(loc.y - robotPx.y) / VEL_PX; // svg y is down, field y is up
+      const sp = Math.hypot(nx, ny);
+      if (sp > MAX_SPEED) { nx = (nx / sp) * MAX_SPEED; ny = (ny / sp) * MAX_SPEED; }
+      vx = nx; vy = ny;
+      render();
+    }
+
+    const onDown = (e: PointerEvent) => {
+      e.preventDefault();
+      root.setAttribute("data-dragging", "");
+      elHandle.setPointerCapture(e.pointerId);
+      setFromPointer(e);
+    };
+    const onMove = (e: PointerEvent) => {
+      if (!root.hasAttribute("data-dragging")) return;
+      setFromPointer(e);
+    };
+    const onUp = (e: PointerEvent) => {
+      root.removeAttribute("data-dragging");
+      if (elHandle.hasPointerCapture(e.pointerId)) elHandle.releasePointerCapture(e.pointerId);
+    };
+    elHandle.addEventListener("pointerdown", onDown);
+    elHandle.addEventListener("pointermove", onMove);
+    elHandle.addEventListener("pointerup", onUp);
+    elHandle.addEventListener("pointercancel", onUp);
+
+    const onKey = (e: KeyboardEvent) => {
+      const step = e.shiftKey ? 1 : 0.25;
+      const map: Record<string, [number, number]> = {
+        ArrowRight: [step, 0], ArrowLeft: [-step, 0], ArrowUp: [0, step], ArrowDown: [0, -step],
+      };
+      const d = map[e.key];
+      if (!d) return;
+      e.preventDefault();
+      let nx = vx + d[0], ny = vy + d[1];
+      const sp = Math.hypot(nx, ny);
+      if (sp > MAX_SPEED) { nx = (nx / sp) * MAX_SPEED; ny = (ny / sp) * MAX_SPEED; }
+      vx = nx; vy = ny;
+      render();
+    };
+    elHandle.addEventListener("keydown", onKey);
+
+    const reset = q<HTMLButtonElement>("[data-reset]");
+    const onReset = () => { vx = 0; vy = 0; render(); };
+    reset.addEventListener("click", onReset);
+
+    // Open with a lateral velocity: the lead is obvious and the virtual target
+    // stays inside the shot table. Driving "toward" the hub instead shortens the
+    // distance below the LUT's 1.74 m floor and opens on a clamp warning.
+    vx = 1.2; vy = 1.8;
+    render();
+
+    return () => {
+      elHandle.removeEventListener("pointerdown", onDown);
+      elHandle.removeEventListener("pointermove", onMove);
+      elHandle.removeEventListener("pointerup", onUp);
+      elHandle.removeEventListener("pointercancel", onUp);
+      elHandle.removeEventListener("keydown", onKey);
+      reset.removeEventListener("click", onReset);
+    };
+  }
+
+  let cleanups: Array<() => void> = [];
+  document.addEventListener("astro:page-load", () => {
+    cleanups.forEach((fn) => fn());
+    cleanups = [];
+    document.querySelectorAll<HTMLElement>("[data-sotm]").forEach((el) => {
+      el.querySelector(".sotm__grid")!.innerHTML = ""; // avoid double-drawing on re-init
+      cleanups.push(initSotm(el));
+    });
+  });
+</script>

@@ -12,11 +12,12 @@ links:
 ---
 
 import RobotExplorer from "../../components/RobotExplorer.astro";
+import SOTMWidget from "../../components/SOTMWidget.astro";
 
 <RobotExplorer />
 
-![Field calibration at HVR](/projects/frc-rebuilt-2026/team-hvr.jpg)
-Our robot at Hudson Valley Regional during Field calibration
+![Robot side profile](/projects/frc-rebuilt-2026/robot-side-profile.jpg)
+Our robot before I took it home to program before Hudson Valley Regional
 
 
 # background
@@ -25,11 +26,293 @@ Shaquille O'Steel is Steel Hawks' 2026 competition robot — it is the last robo
 It is composed of multiple subsystems as seen above, and each subsystem brought unique programmatic challenges to be solved.
 The most in-depth subsystem is the turret-shooter assembly, requiring the robot to track and hit a target while both the robot and the target's effective position are constantly shifting — a capability known as shoot-on-the-move (SOTM). Rather than aiming at the hub directly, the turret computes a virtual target that accounts for the robot's current velocity, letting it lead the shot the same way an anti-aircraft gunner leads a moving plane. This meant the turret's tracking had to stay fast and precise across the entire rotation range.
 
+![Our robot on the field during HVR's field calibration](/projects/frc-rebuilt-2026/team-hvr.jpg)
 
+# sotm
+
+Standing still and shooting into the hub is the easy case. The moment the drivetrain is moving,
+the ball still leaves the flywheel carrying whatever velocity the robot had — so aiming at the
+real hub just misses, by more the faster you're going. The turret doesn't aim at the hub. It
+aims at a virtual target: the hub's position pushed backward along the robot's velocity by
+however long the shot will be in the air, so the ball and the hub arrive at the same point at
+the same time.
+
+The annoying part is that "how long the shot will be in the air" depends on how far away the
+virtual target is, and the virtual target's position depends on how long the shot will be in the
+air. It's circular. ```RobotState.updateMovingShot()``` runs every loop and hands off to
+```ShooterStructure.Moving.solveMovingShot()```, which resolves that circularity with Newton's
+method instead of trying to solve it in closed form:
+
+```java
+double tGuess = calculateTimeOfFlight(v, theta, virtualDist, deltaH, !isFerry) * tofScale;
+for (int i = 0; i < maxIterations; i++) {
+    double dragC = Constants.SOTMConstants.DRAG_COEFFICIENT.get();
+    double driftTOF = dragC > 1e-6
+        ? (1.0 - Math.exp(-dragC * tGuess)) / dragC
+        : tGuess;
+    double tofOffsetX = -velX * driftTOF - accelX * D * tGuess;
+    double tofOffsetY = -velY * driftTOF - accelY * D * tGuess;
+    virtualTarget = new Translation3d(
+        actualTarget.getX() + posOffsetX + tofOffsetX,
+        actualTarget.getY() + posOffsetY + tofOffsetY,
+        actualTarget.getZ());
+
+    // recompute distance -> new shot solution -> new TOF guess, then take
+    // a Newton step on f(t) = LUT(d(t)) - t using a central finite difference
+    // for f'(t) instead of just fixed-point iterating
+    ...
+    double nextTof = tGuess - f / fPrime;
+    tGuess = MathUtil.clamp(nextTof, 0.05, 2.0);
+    if (Math.abs(nextTof - tGuess) < timeTolerance) break;
+}
+```
+
+```driftTOF``` is where drag actually enters the model. Without air resistance the ball's
+displacement over the flight is just ```velocity * time```. With drag it's
+```(1 - e^(-c*t)) / c``` — the ball's effective velocity decays exponentially instead of
+staying constant, so a constant-velocity model overshoots how far the ball actually
+carries on longer shots. In practice this converges in one or two iterations
+(```SOTM/ConvergedIterations``` in the logs), so calling it "solving a differential equation
+every loop" would be dramatic — it's a couple of Newton steps and it's done.
+
+The velocity fed into that solver isn't just chassis velocity either. The turret is offset
+from the robot's center, so when the robot rotates, the turret itself is moving on an arc
+even if the chassis center is translating slowly:
+
+```java
+double turretDx = RobotConstants.ROBOT_TO_TURRET.getX();
+double turretDy = RobotConstants.ROBOT_TO_TURRET.getY();
+Translation2d fieldRelativeVelocity =
+    new Translation2d(
+        robotVelocity.getX() + (-chassisOmegaRadPerSec * turretDy),
+        robotVelocity.getY() + (chassisOmegaRadPerSec * turretDx))
+    .rotateBy(robotHeading);
+```
+
+That's just v = v_chassis + ω × r for the turret's mount point, rotated into field frame.
+Skip this term and the turret undershoots the lead angle on any shot where the robot is
+turning while it moves, which is most of them.
+
+Acceleration mattered too — a robot accelerating out of a defended position needs a
+different lead than one at constant velocity, and RobotState picks its acceleration
+source based on what's actually available that loop:
+
+```java
+Translation2d rawAccel = null;
+String accelSource;
+if (gyroBodyAccelValid) {
+    rawAccel = gyroBodyLinearAccelMps2.rotateBy(getRotation());
+    accelSource = "Pigeon";
+} else if (previousFieldVelocityTimestampSec > 0.0 && dt > 1e-4 && dt < 0.1) {
+    rawAccel = currentFieldVelocity.minus(previousFieldVelocity).div(dt);
+    accelSource = "Derivative";
+} else {
+    accelSource = "Hold";
+}
+if (rawAccel != null) {
+    double tau = Constants.SOTMConstants.ACCEL_LPF_TIME_CONSTANT_SEC.get();
+    double effectiveDt = dt > 1e-4 ? dt : Constants.UPDATE_LOOP_DT;
+    double alpha = tau > 0.0 ? effectiveDt / (tau + effectiveDt) : 1.0;
+    filteredFieldAcceleration =
+        filteredFieldAcceleration.times(1.0 - alpha).plus(rawAccel.times(alpha));
+}
+previousFieldVelocity = currentFieldVelocity;
+previousFieldVelocityTimestampSec = now;
+Logger.recordOutput("SOTM/FieldAccelEstimate", filteredFieldAcceleration);
+Logger.recordOutput("SOTM/AccelSource", accelSource);
+```
+
+Pigeon accel is preferred when it's valid because it measures the robot's actual body
+acceleration — including things like getting hit by another robot — with about a
+millisecond of latency. The velocity derivative only sees motion odometry can resolve, so
+it lags and gets noisy under defense. Either way the raw value gets run through a low-pass
+filter before it's used, since neither source is clean enough to feed straight into a
+lead calculation frame to frame.
+
+The shot itself — exit velocity and hood angle for a given distance — comes from a
+generated lookup table rather than a live physics solve, since running the full ballistic
+solver every 20ms turned out to be less accurate than a table built once from a proper
+shot-solver with drag, funnel geometry, and slip factor baked in:
+
+```java
+public static double calculateTimeOfFlight(double v, double theta, double x, double deltaH, boolean useLutIfEnabled) {
+    if (useLutIfEnabled && Toggles.useLUT.get() && !Toggles.useKinematicsTOF.get()) {
+        return shootingTimeOfFlightMap.get(MathUtil.clamp(x, minShootDistance, maxShootDistance));
+    }
+    // fallback: solve 0.5*g*t^2 - v*sin(theta)*t + deltaH = 0 directly
+    ...
+}
+```
+
+There's also a useKinematicsTOF and useLUT toggle pair, so during tuning we could flip
+between the table and the raw kinematic solve live over NetworkTables and watch how much
+they diverged, without redeploying code.
+
+<SOTMWidget />
+
+(Widget above: drag the arrow to give the robot velocity and watch the virtual target
+slide off the hub — pulled from the actual shot table, not illustrative numbers.)
+
+# turret tracking
+
+SOTM gives the turret a target angle every loop, but a PID loop that only reacts to
+position error is always a step behind a moving target — it corrects error after the
+error already exists. ```Turret``` adds a velocity feedforward so the turret is already
+rotating at roughly the rate it needs to be, and the position loop only has to clean up
+the remainder:
+
+```java
+private double calculateTurretVelocityFF(Translation2d target2d) {
+  var turretPos = new Pose3d(robot)
+      .transformBy(RobotConstants.ROBOT_TO_TURRET)
+      .toPose2d()
+      .getTranslation();
+  var chassisSpeeds = ChassisSpeeds.fromRobotRelativeSpeeds(
+      RobotContainer.s_Swerve.getChassisSpeeds(),
+      RobotState.getInstance().getRotation());
+  double omegaRobot = chassisSpeeds.omegaRadiansPerSecond;
+
+  // velocity of the turret's mount point = chassis linear velocity + omega x r_offset
+  Translation2d robotToTurret = turretPos.minus(robot.getTranslation());
+  double turretVx = chassisSpeeds.vxMetersPerSecond - omegaRobot * robotToTurret.getY();
+  double turretVy = chassisSpeeds.vyMetersPerSecond + omegaRobot * robotToTurret.getX();
+  Translation2d turretVelocity = new Translation2d(turretVx, turretVy);
+
+  Translation2d mrR = target2d.minus(turretPos);
+  double distance = mrR.getNorm();
+  Translation2d rHatPerpendicular = mrR.div(distance).rotateBy(Rotation2d.kCCW_Pi_2);
+
+  double tangentialVelocity = turretVelocity.dot(rHatPerpendicular);
+  return (tangentialVelocity / distance) - omegaRobot;
+}
+```
+
+The idea is angular velocity = tangential velocity / radius. Project the turret's field
+velocity onto the direction perpendicular to the line-of-sight, divide by distance to the
+target, and that's how fast the bearing to the target is changing — which is exactly the
+rate the turret needs to spin to hold it. Subtracting ```omegaRobot``` at the end converts
+that from a field-relative rate into a turret-relative one, since the turret's own frame
+is already rotating with the chassis. This runs on the virtual target from SOTM, not
+the real hub, so the feedforward and the aim point stay consistent with each other.
+
+There's a second feedforward that has nothing to do with the target moving at all — the
+turret sits on a physical counterbalance spring, which fights the control loop
+differently depending on where the turret is in its range:
+
+```java
+double negThreshold = -0.984816 + SPRING_HYSTERESIS;
+double posThreshold = 1.810097 - SPRING_HYSTERESIS;
+
+if (pos <= negThreshold) {
+    double depth = (negThreshold - pos) / (negThreshold - constants.minRotation().getRadians());
+    constantForceSpringFF = constantForceFF.getAsDouble() * Math.min(depth, 1.0);
+} else if (pos >= posThreshold) {
+    double depth = (pos - posThreshold) / (constants.maxRotation().getRadians() - posThreshold);
+    constantForceSpringFF = -constantForceFF.getAsDouble() * Math.min(depth, 1.0);
+}
+```
+
+Near the middle of the range the spring's torque is small enough to ignore. Past a
+threshold on either side, it ramps in linearly with how far past the threshold the turret
+is, capped at the spring's rated force once fully engaged. SPRING_HYSTERESIS keeps the
+turret from chattering the feedforward on and off if it sits right at the threshold. Both
+feedforward terms — velocity and spring — get summed and added directly into the
+MotionMagic call:
+
+```java
+io.runPivotMM(
+  desiredRotation.getRadians(),
+  kV.getAsDouble() * calculateTurretVelocityFF(velocityTargetFF) + constantForceSpringFF
+);
+```
 
 # shot solver
 
 ![Shot solver app](/projects/frc-rebuilt-2026/shot-solver.png)
+
+Everything the LUT feeds into SOTM and the flywheel comes out of this app, not out of code.
+The generated table isn't just distance → speed → hood angle — it's produced by a solver
+that already accounts for drag, funnel geometry, and how much the wheel actually slips
+against the ball versus its ideal surface speed, baked into a single set of generation
+parameters recorded right alongside the table it produced:
+
+```java
+// Generation parameters:
+//   placement bias    0.91 (back rim)
+//   slip η            0.75
+//   ball condition    0.89
+//   η × wear          0.667
+//   hood angle bias   +0.0°
+//   wheel radius      0.0508 m
+//   drag              on  (Cd=0.50, m=0.215 kg, d=0.150 m)
+```
+
+```placement bias``` is why the LUT deliberately doesn't aim for dead-center on the hub — it's
+solved to land at 0.91 of the way toward the back rim on purpose, which is what buys the
+shot margin for error before it ever reaches the robot. The same run that generates the
+speed/angle/TOF columns also generates the close/far columns behind the flywheel's
+readiness band:
+
+```java
+shootingFlywheelVelocityCloseMap.put(1.743, 8.66);
+shootingFlywheelVelocityFarMap.put(1.743, 11.11);
+```
+
+So the band isn't a separate tolerance bolted onto the LUT after the fact — it's the same
+solve, at the same distance, just reporting the full range of wheel speeds that still land
+the shot within the placement-bias margin instead of only the single best-fit speed. That's
+the number ```ShooterStructure.getVelocityBandRatios()``` reads from at runtime:
+
+```java
+public static double[] getVelocityBandRatios(double distance) {
+  double target = shootingFlywheelVelocityMap.get(d);
+  double close = shootingFlywheelVelocityCloseMap.get(d);
+  double far = shootingFlywheelVelocityFarMap.get(d);
+  return new double[] {close / target, far / target};
+}
+```
+
+It's expressed as a ratio against the centroid speed rather than an absolute number so it
+still scales correctly under any multiplier applied on top at runtime — ferry shots,
+auton, the manual redbull speed nudge. ```Flywheel``` turns those ratios back into real speeds
+for whatever's actually commanded, and gates readiness on the band instead of a symmetric
+tolerance around one number:
+
+```java
+double[] ratios = ShooterStructure.getVelocityBandRatios(dist);
+if (ratios != null) {
+  bandLoRadPerSec = targetVelocityRadPerSec * ratios[0];
+  bandHiRadPerSec = targetVelocityRadPerSec * ratios[1];
+  rawInBand = avgVelocityRadPerSec >= bandLoRadPerSec && avgVelocityRadPerSec <= bandHiRadPerSec;
+}
+```
+
+Practical effect: during spin-up, the moment the wheel crosses into the valid band — often
+well before it's actually settled at the commanded setpoint — the shot is live. There's no
+reason to wait for a speed the solver already said wasn't necessary.
+
+The one thing that assumption doesn't cover for free: the LUT's time-of-flight column was
+generated assuming the ball leaves at exactly the commanded setpoint. Fire early, mid
+spin-up, and the ball is a little slower than that, so it's actually in the air slightly
+longer than the LUT says — and SOTM's lead angle depends directly on that number.
+```getTofSpeedScale()``` corrects for it:
+
+```java
+public double getTofSpeedScale() {
+  double measured = (inputs.leftVelocityRadPerSec + inputs.rightVelocityRadPerSec) / 2.0;
+  if (targetVelocityRadPerSec < 1.0 || measured < 1.0) return 1.0;
+  return Math.max(0.7, Math.min(1.4, targetVelocityRadPerSec / measured));
+}
+```
+
+Setpoint over measured, clamped so a sensor glitch or a stalled wheel can't send a wild
+scale factor into the solver. 1.0 once the wheel is settled — the exact condition the LUT
+was generated for, so it's a no-op. Above 1.0 when firing below setpoint, which stretches
+the TOF the Newton solver in solveMovingShot() converges to, so the lead angle stays
+correct even for a shot taken mid spin-up. The correction on any single shot is small —
+the whole point of the placement bias is that it doesn't need to be perfect — but across a
+full match of shots taken as soon as the band allows instead of waiting for full settle,
+it's real cycle time back.
 
 # closing thoughts
 
