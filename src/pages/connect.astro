@@ -1,6 +1,7 @@
 ---
 import Base from "../layouts/Base.astro";
 import SiteHeader from "../components/SiteHeader.astro";
+import { withBase } from "../lib/url";
 
 // edit these — placeholder handles
 const channels = [
@@ -63,7 +64,7 @@ const channels = [
   </main>
 
   <footer class="container foot">
-    <a href="/" class="mono">← back home</a>
+    <a href={withBase("/")} class="mono">← back home</a>
     <span class="mono">breadboard — built in the open</span>
   </footer>
 </Base>

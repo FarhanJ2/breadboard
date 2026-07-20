@@ -4,6 +4,7 @@ import { Image } from "astro:assets";
 import Base from "../../layouts/Base.astro";
 import SiteHeader from "../../components/SiteHeader.astro";
 import Toc from "../../components/Toc.astro";
+import { withBase } from "../../lib/url";
 
 export async function getStaticPaths() {
   const projects = await getCollection("projects");
@@ -28,7 +29,7 @@ const ext = [
   <SiteHeader current="projects" />
 
   <article class="pd container" data-status={d.status}>
-    <a href="/projects" class="back mono">← projects</a>
+    <a href={withBase("/projects")} class="back mono">← projects</a>
 
     <header class="pd__head">
       <p class="kicker mono">
@@ -64,7 +65,7 @@ const ext = [
   </article>
 
   <footer class="container foot">
-    <a href="/projects" class="mono">← all projects</a>
+    <a href={withBase("/projects")} class="mono">← all projects</a>
     <span class="mono">breadboard — built in the open</span>
   </footer>
 </Base>

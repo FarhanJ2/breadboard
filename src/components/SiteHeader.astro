@@ -1,5 +1,7 @@
 ---
 /** Persistent site header used on inner pages (index has its own brand-reveal one). */
+import { withBase } from "../lib/url";
+
 interface Props {
   current?: "writing" | "projects" | "connect";
 }
@@ -8,14 +10,14 @@ const { current } = Astro.props;
 
 <header class="topbar">
   <div class="topbar__inner container">
-    <a href="/" class="mark" aria-label="Farhan Jamil — home">
+    <a href={withBase("/")} class="mark" aria-label="Farhan Jamil — home">
       <span class="mark__chip">fj</span>
       <span class="mark__name">farhan jamil<span class="dot">.</span></span>
     </a>
     <nav class="nav">
-      <a href="/blog" aria-current={current === "writing" ? "page" : undefined}>writing</a>
-      <a href="/projects" aria-current={current === "projects" ? "page" : undefined}>projects</a>
-      <a href="/connect" aria-current={current === "connect" ? "page" : undefined}>connect</a>
+      <a href={withBase("/blog")} aria-current={current === "writing" ? "page" : undefined}>writing</a>
+      <a href={withBase("/projects")} aria-current={current === "projects" ? "page" : undefined}>projects</a>
+      <a href={withBase("/connect")} aria-current={current === "connect" ? "page" : undefined}>connect</a>
     </nav>
   </div>
 </header>

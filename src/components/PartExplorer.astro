@@ -10,6 +10,7 @@
  * per part, named after its `key`. Hotspot coords (hx/hy) are % of the stage.
  */
 import type { Part } from "./partExplorer";
+import { withBase } from "../lib/url";
 
 interface Props {
   /** Public path holding the renders, no trailing slash. */
@@ -33,6 +34,7 @@ const {
   hint = "hover a label to see the part · click to pin",
 } = Astro.props;
 
+const root = withBase(base);
 const left = parts.filter((p) => p.side === "left");
 const right = parts.filter((p) => p.side === "right");
 ---
@@ -49,9 +51,9 @@ const right = parts.filter((p) => p.side === "right");
     </div>
 
     <div class="ds__stage">
-      <img class="ds__img is-active" data-key="full" src={`${base}/${full}`} alt={`${label} — full view`} loading="lazy" />
+      <img class="ds__img is-active" data-key="full" src={`${root}/${full}`} alt={`${label} — full view`} loading="lazy" />
       {parts.map((p) => (
-        <img class="ds__img" data-key={p.key} src={`${base}/${p.key}.png`} alt={`${label} — ${p.kicker} highlighted`} loading="lazy" />
+        <img class="ds__img" data-key={p.key} src={`${root}/${p.key}.png`} alt={`${label} — ${p.kicker} highlighted`} loading="lazy" />
       ))}
 
       {parts.map((p) => (

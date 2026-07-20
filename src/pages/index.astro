@@ -4,6 +4,7 @@ import Base from "../layouts/Base.astro";
 import StatusLine from "../components/StatusLine.astro";
 import PostCard from "../components/PostCard.astro";
 import ProjectCard from "../components/ProjectCard.astro";
+import { withBase } from "../lib/url";
 
 const posts = (await getCollection("blog")).sort(
   (a, b) => b.data.date.valueOf() - a.data.date.valueOf(),
@@ -29,14 +30,14 @@ const status = [
 <Base title="Farhan Jamil — Workbench">
   <header class="topbar" id="topbar">
     <div class="topbar__inner container">
-      <a href="/" class="mark" aria-label="Farhan Jamil — home">
+      <a href={withBase("/")} class="mark" aria-label="Farhan Jamil — home">
         <span class="mark__chip">fj</span>
         <span class="mark__name" aria-hidden="true">farhan jamil<span class="dot">.</span></span>
       </a>
       <nav class="nav">
-        <a href="/blog">writing</a>
-        <a href="/projects">projects</a>
-        <a href="/connect">connect</a>
+        <a href={withBase("/blog")}>writing</a>
+        <a href={withBase("/projects")}>projects</a>
+        <a href={withBase("/connect")}>connect</a>
       </nav>
     </div>
   </header>
@@ -54,11 +55,11 @@ const status = [
     <section class="builds">
       <div class="builds__head">
         <h2 class="side__head hand">selected builds —</h2>
-        <a href="/projects" class="builds__all mono">all projects <span aria-hidden="true">→</span></a>
+        <a href={withBase("/projects")} class="builds__all mono">all projects <span aria-hidden="true">→</span></a>
       </div>
       <div class="builds__grid">
         {selectedBuilds.map((p) => (
-          <a href={`/projects/${p.id}`} class="build-link" aria-label={`Open ${p.data.title}`}>
+          <a href={withBase(`/projects/${p.id}`)} class="build-link" aria-label={`Open ${p.data.title}`}>
             <ProjectCard project={p} variant="mini" />
           </a>
         ))}
@@ -68,7 +69,7 @@ const status = [
     <div class="feed">
       <div class="feed__main">
         <PostCard post={featured} variant="featured" />
-        <a href="/blog" class="feed__all">the full log <span aria-hidden="true">→</span></a>
+        <a href={withBase("/blog")} class="feed__all">the full log <span aria-hidden="true">→</span></a>
       </div>
 
       <aside class="feed__side">

@@ -3,6 +3,7 @@ import { getCollection } from "astro:content";
 import Base from "../layouts/Base.astro";
 import SiteHeader from "../components/SiteHeader.astro";
 import ProjectCard from "../components/ProjectCard.astro";
+import { withBase } from "../lib/url";
 
 const projects = (await getCollection("projects")).sort(
   (a, b) => a.data.order - b.data.order,
@@ -12,7 +13,7 @@ const robot = projects.filter((p) => p.data.category === "robot" && p.id !== fea
 const tools = projects.filter((p) => p.data.category === "tools" && p.id !== featured.id);
 
 const f = featured.data;
-const fHref = `/projects/${featured.id}`;
+const fHref = withBase(`/projects/${featured.id}`);
 const statusLabel: Record<string, string> = {
   shipped: "SHIPPED", active: "ACTIVE", research: "RESEARCH", archived: "ARCHIVED",
 };
@@ -79,7 +80,7 @@ const fExt = [
   </main>
 
   <footer class="container foot">
-    <a href="/" class="mono">← back home</a>
+    <a href={withBase("/")} class="mono">← back home</a>
     <span class="mono">breadboard — built in the open</span>
   </footer>
 </Base>
