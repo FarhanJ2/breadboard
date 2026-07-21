@@ -11,6 +11,7 @@ const projects = (await getCollection("projects")).sort(
 const featured = projects.find((p) => p.data.featured) ?? projects[0];
 const robot = projects.filter((p) => p.data.category === "robot" && p.id !== featured.id);
 const tools = projects.filter((p) => p.data.category === "tools" && p.id !== featured.id);
+const games = projects.filter((p) => p.data.category === "game-dev" && p.id !== featured.id);
 
 const f = featured.data;
 const fHref = withBase(`/projects/${featured.id}`);
@@ -21,6 +22,7 @@ const fExt = [
   f.links.github && { label: "code", href: f.links.github },
   f.links.docs && { label: "docs", href: f.links.docs },
   f.links.demo && { label: "demo", href: f.links.demo },
+  ...f.links.more,
 ].filter(Boolean) as { label: string; href: string }[];
 ---
 
@@ -40,8 +42,10 @@ const fExt = [
 
     <!-- featured build -->
     <article class="phero" data-status={f.status}>
-      <div class="phero__panel">
-        <div class="grid" aria-hidden="true"></div>
+      <div class={`phero__panel ${f.cover ? "has-cover" : ""}`}>
+        {f.cover
+          ? <img class="phero__cover" src={withBase(f.cover)} alt={f.coverAlt || f.title} loading="lazy" decoding="async" />
+          : <div class="grid" aria-hidden="true"></div>}
         {f.stat && <span class="readout mono">{f.stat.label} <b>{f.stat.value}</b></span>}
         <span class="phero__badge mono"><span class="led" aria-hidden="true"></span>{statusLabel[f.status]} · {f.year}</span>
         <a href={fHref} class="codename">{f.codename}</a>
@@ -64,19 +68,32 @@ const fExt = [
       </div>
     </article>
 
-    <section class="group">
-      <h2 class="group__head hand">robot systems —</h2>
-      <div class="pgrid">
-        {robot.map((p) => <ProjectCard project={p} />)}
-      </div>
-    </section>
+    {robot.length > 0 && (
+      <section class="group">
+        <h2 class="group__head hand">robot systems —</h2>
+        <div class="pgrid">
+          {robot.map((p) => <ProjectCard project={p} />)}
+        </div>
+      </section>
+    )}
 
-    <section class="group">
-      <h2 class="group__head hand">tools &amp; research —</h2>
-      <div class="pgrid">
-        {tools.map((p) => <ProjectCard project={p} />)}
-      </div>
-    </section>
+    {tools.length > 0 && (
+      <section class="group">
+        <h2 class="group__head hand">tools &amp; research —</h2>
+        <div class="pgrid">
+          {tools.map((p) => <ProjectCard project={p} />)}
+        </div>
+      </section>
+    )}
+
+    {games.length > 0 && (
+      <section class="group">
+        <h2 class="group__head hand">games &amp; mapping —</h2>
+        <div class="pgrid">
+          {games.map((p) => <ProjectCard project={p} />)}
+        </div>
+      </section>
+    )}
   </main>
 
   <footer class="container foot">
@@ -134,6 +151,27 @@ const fExt = [
     background-size: 26px 26px;
     mask-image: radial-gradient(130% 90% at 30% 35%, #000 40%, transparent 92%);
   }
+  .phero__cover {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  /* scrim so the badge (top) and codename (bottom) stay legible over the photo */
+  .phero__panel.has-cover::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    background:
+      linear-gradient(to top, rgba(9, 11, 16, 0.85) 0%, rgba(9, 11, 16, 0) 42%),
+      linear-gradient(to bottom, rgba(9, 11, 16, 0.6) 0%, rgba(9, 11, 16, 0) 34%);
+    pointer-events: none;
+  }
+  /* keep the overlaid text above the photo scrim */
+  .readout, .phero__badge, .codename { z-index: 2; }
   .readout { position: absolute; top: 14px; right: 16px; color: var(--ink-faint); }
   .readout b { color: var(--phosphor); font-weight: 600; }
   .phero__badge {

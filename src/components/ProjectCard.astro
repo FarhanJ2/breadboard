@@ -7,7 +7,7 @@ interface Props {
   variant?: "grid" | "mini";
 }
 const { project, variant = "grid" } = Astro.props;
-const { title, codename, blurb, year, status, tech, stat, links } = project.data;
+const { title, codename, blurb, year, status, tech, stat, links, cover, coverAlt } = project.data;
 const href = withBase(`/projects/${project.id}`);
 
 const statusLabel: Record<string, string> = {
@@ -22,10 +22,16 @@ const linkList: { label: string; href: string }[] = [
   links.github && { label: "code", href: links.github },
   links.docs && { label: "docs", href: links.docs },
   links.demo && { label: "demo", href: links.demo },
+  ...links.more,
 ].filter(Boolean) as { label: string; href: string }[];
 ---
 
-<article class={`pcard pcard--${variant}`} data-status={status}>
+<article class={`pcard pcard--${variant} ${cover && variant === "grid" ? "pcard--cover" : ""}`} data-status={status}>
+  {cover && variant === "grid" && (
+    <a href={href} class="pcard__thumb" tabindex="-1" aria-hidden="true">
+      <img src={withBase(cover)} alt={coverAlt || title} loading="lazy" decoding="async" />
+    </a>
+  )}
   <div class="pcard__head">
     <span class="led" aria-hidden="true"></span>
     <span class="status mono">{statusLabel[status]}</span>
@@ -74,6 +80,25 @@ const linkList: { label: string; href: string }[] = [
     border-radius: 12px;
     padding: 18px 18px 16px;
   }
+
+  /* cover thumbnail bleeds to the card edges above the header */
+  .pcard--cover { padding-top: 0; overflow: hidden; }
+  .pcard__thumb {
+    display: block;
+    margin: 0 -18px 14px;
+    aspect-ratio: 16 / 9;
+    background: var(--bg-inset);
+    border-bottom: 1px solid var(--line);
+    overflow: hidden;
+  }
+  .pcard__thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    transition: transform 0.4s ease;
+  }
+  .pcard--cover:hover .pcard__thumb img { transform: scale(1.03); }
 
   .pcard__head {
     display: flex;

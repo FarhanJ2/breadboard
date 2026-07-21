@@ -1,6 +1,5 @@
 ---
 import { getCollection, render } from "astro:content";
-import { Image } from "astro:assets";
 import Base from "../../layouts/Base.astro";
 import SiteHeader from "../../components/SiteHeader.astro";
 import Toc from "../../components/Toc.astro";
@@ -22,6 +21,7 @@ const ext = [
   d.links.github && { label: "code", href: d.links.github },
   d.links.docs && { label: "docs", href: d.links.docs },
   d.links.demo && { label: "demo", href: d.links.demo },
+  ...d.links.more,
 ].filter(Boolean) as { label: string; href: string }[];
 ---
 
@@ -51,10 +51,6 @@ const ext = [
         </ul>
       )}
     </header>
-
-    {d.cover && (
-      <Image src={d.cover} alt={d.coverAlt || d.title} class="cover" />
-    )}
 
     <div class="pd__body">
       <Toc headings={headings} />
@@ -108,15 +104,6 @@ const ext = [
   .tech li {
     font-size: 10.5px; letter-spacing: 0.06em; color: var(--ink-soft);
     border: 1px solid var(--line); border-radius: 5px; padding: 3px 7px 2px;
-  }
-
-  .cover {
-    display: block;
-    width: 100%;
-    height: auto;
-    border-radius: 12px;
-    border: 1px solid var(--line);
-    margin: 4px 0 8px;
   }
 
   /* containing block for the TOC rail, which hangs in the left gutter */
