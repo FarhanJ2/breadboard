@@ -1,7 +1,7 @@
 ---
 title: "FRC Rebuilt - Steel Hawks"
 codename: "SHAQ"
-blurb: "The best one yet."
+blurb: "My last FRC robot."
 year: "2026"
 status: "shipped"
 category: "robot"
@@ -15,6 +15,7 @@ links:
 
 import RobotExplorer from "../../components/RobotExplorer.astro";
 import SOTMWidget from "../../components/SOTMWidget.astro";
+import WebEmbed from "../../components/WebEmbed.astro";
 
 <RobotExplorer />
 
@@ -229,8 +230,11 @@ io.runPivotMM(
 ```
 
 # shot solver
-TODO instead of image add actual website to be interactable
-![Shot solver app](/projects/frc-rebuilt-2026/shot-solver.png)
+<WebEmbed
+  src="https://steelhawks.github.io/Rebuilt2026/"
+  title="the shot solver"
+  height={640}
+/>
 
 Everything the LUT feeds into SOTM and the flywheel comes out of this app, not out of code.
 The generated table isn't just distance → speed → hood angle — it's produced by a solver
