@@ -12,13 +12,17 @@ const posts = (await getCollection("blog")).sort(
 const featured = posts.find((p) => p.data.featured) ?? posts[0];
 const rest = posts.filter((p) => p.id !== featured.id);
 
-const projects = await getCollection("projects");
-// curated teaser: one shipped robot, one active tool, one research project — spans
-// the range and gives three different status-LED colors
-const pick = ["omegabot", "wpilog-library", "gtsam-estimator"];
-const selectedBuilds = pick
-  .map((id) => projects.find((p) => p.id === id))
-  .filter((p): p is (typeof projects)[number] => Boolean(p));
+const projects = (await getCollection("projects")).sort(
+  (a, b) => a.data.order - b.data.order,
+);
+// flagship leads (explicit `featured`, else lowest order); the rest fill the row
+const flagship = projects.find((p) => p.data.featured) ?? projects[0];
+const flag = flagship.data;
+const otherBuilds = projects.filter((p) => p.id !== flagship.id);
+
+const statusLabel: Record<string, string> = {
+  shipped: "SHIPPED", active: "ACTIVE", research: "RESEARCH", archived: "ARCHIVED",
+};
 
 const status = [
   "blahahhahhahah",
@@ -57,8 +61,35 @@ const status = [
         <h2 class="side__head hand">selected builds —</h2>
         <a href={withBase("/projects")} class="builds__all mono">all projects <span aria-hidden="true">→</span></a>
       </div>
+
+      <a
+        href={withBase(`/projects/${flagship.id}`)}
+        class="feature"
+        data-status={flag.status}
+        aria-label={`Open ${flag.title}`}
+      >
+        <div class="feature__media">
+          {flag.cover
+            ? <img src={withBase(flag.cover)} alt={flag.coverAlt || flag.title} loading="lazy" decoding="async" />
+            : <span class="feature__grid" aria-hidden="true"></span>}
+          <span class="feature__badge mono"><span class="led" aria-hidden="true"></span>{statusLabel[flag.status]} · {flag.year}</span>
+          <span class="feature__codename mono">{flag.codename}</span>
+        </div>
+        <div class="feature__body">
+          <p class="feature__kicker mono">featured build</p>
+          <h3 class="feature__title">{flag.title}</h3>
+          <p class="feature__blurb">{flag.blurb}</p>
+          {flag.tech.length > 0 && (
+            <ul class="tech" aria-label="built with">
+              {flag.tech.slice(0, 5).map((t) => <li class="mono">{t}</li>)}
+            </ul>
+          )}
+          <span class="feature__cta mono">open the writeup <span aria-hidden="true">→</span></span>
+        </div>
+      </a>
+
       <div class="builds__grid">
-        {selectedBuilds.map((p) => (
+        {otherBuilds.map((p) => (
           <a href={withBase(`/projects/${p.id}`)} class="build-link" aria-label={`Open ${p.data.title}`}>
             <ProjectCard project={p} variant="mini" />
           </a>
@@ -185,7 +216,7 @@ const status = [
   }
   .tagline em { color: var(--blueprint); font-style: italic; }
 
-  /* --- selected builds strip --- */
+  /* --- selected builds --- */
   .builds { padding-bottom: clamp(38px, 6vw, 60px); }
   .builds__head {
     display: flex;
@@ -195,9 +226,97 @@ const status = [
     margin-bottom: 16px;
   }
   .builds__all { font-size: 0.8rem; letter-spacing: 0.04em; white-space: nowrap; }
+
+  /* flagship feature card — photo-led, whole card is the link */
+  .feature {
+    display: grid;
+    grid-template-columns: 1.15fr 1fr;
+    gap: clamp(16px, 2.5vw, 30px);
+    background: var(--bg-raise);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 14px;
+    margin-bottom: 16px;
+    text-decoration: none;
+    transition: transform 0.18s ease, box-shadow 0.18s ease;
+  }
+  .feature:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 18px 44px -22px rgba(0, 0, 0, 0.8);
+    text-decoration: none;
+  }
+  .feature[data-status="shipped"] { --st: var(--phosphor); }
+  .feature[data-status="active"] { --st: var(--amber); }
+  .feature[data-status="research"] { --st: var(--blueprint); }
+  .feature[data-status="archived"] { --st: var(--ink-faint); }
+
+  .feature__media {
+    position: relative;
+    min-height: 236px;
+    border-radius: 11px;
+    overflow: hidden;
+    background: var(--bg-inset);
+    border: 1px solid var(--line-soft);
+  }
+  .feature__media img {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    object-fit: cover; display: block;
+    transition: transform 0.4s ease;
+  }
+  .feature:hover .feature__media img { transform: scale(1.035); }
+  .feature__media::after {
+    content: ""; position: absolute; inset: 0; z-index: 1;
+    background:
+      linear-gradient(to top, rgba(9, 11, 16, 0.82) 0%, rgba(9, 11, 16, 0) 44%),
+      linear-gradient(to bottom, rgba(9, 11, 16, 0.55) 0%, rgba(9, 11, 16, 0) 32%);
+  }
+  .feature__grid {
+    position: absolute; inset: 0;
+    background-image:
+      linear-gradient(rgba(120, 150, 230, 0.07) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(120, 150, 230, 0.07) 1px, transparent 1px);
+    background-size: 24px 24px;
+    mask-image: radial-gradient(130% 90% at 30% 35%, #000 40%, transparent 92%);
+  }
+  .feature__badge {
+    position: absolute; top: 12px; left: 13px; z-index: 2;
+    display: inline-flex; align-items: center; gap: 7px;
+    font-size: 11px; letter-spacing: 0.12em; color: var(--st);
+  }
+  .feature__badge .led {
+    width: 8px; height: 8px; border-radius: 50%; flex: none;
+    background: var(--st); box-shadow: 0 0 8px 0 var(--st);
+  }
+  .feature__codename {
+    position: absolute; left: 15px; bottom: 12px; z-index: 2;
+    font-weight: 600; font-size: clamp(1.5rem, 3vw, 2.1rem);
+    letter-spacing: -0.01em; color: var(--ink);
+    text-shadow: 0 2px 18px rgba(0, 0, 0, 0.65);
+  }
+
+  .feature__body { display: flex; flex-direction: column; padding: 8px 10px 8px 2px; }
+  .feature__kicker { color: var(--ink-faint); letter-spacing: 0.14em; font-size: 11px; margin: 4px 0 9px; }
+  .feature__title {
+    margin: 0 0 8px; font-size: clamp(1.4rem, 2.4vw, 1.9rem);
+    font-weight: 600; letter-spacing: -0.015em; color: var(--ink);
+    transition: color 0.15s ease;
+  }
+  .feature:hover .feature__title { color: var(--amber); }
+  .feature__blurb { margin: 0; color: var(--ink-soft); font-size: 1.02rem; line-height: 1.5; }
+  .feature .tech { list-style: none; display: flex; flex-wrap: wrap; gap: 6px; margin: 14px 0 0; padding: 0; }
+  .feature .tech li {
+    font-size: 10.5px; letter-spacing: 0.06em; color: var(--ink-soft);
+    border: 1px solid var(--line); border-radius: 5px; padding: 3px 7px 2px;
+  }
+  .feature__cta {
+    margin-top: auto; padding-top: 16px;
+    font-size: 0.82rem; letter-spacing: 0.03em; color: var(--amber);
+  }
+
   .builds__grid {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
     gap: 16px;
   }
   .build-link {
@@ -210,8 +329,9 @@ const status = [
     box-shadow: 0 12px 30px -14px rgba(0, 0, 0, 0.7);
     text-decoration: none;
   }
-  @media (max-width: 760px) {
-    .builds__grid { grid-template-columns: 1fr; }
+  @media (max-width: 620px) {
+    .feature { grid-template-columns: 1fr; }
+    .feature__media { min-height: 200px; }
   }
 
   /* --- feed --- */

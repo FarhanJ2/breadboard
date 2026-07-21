@@ -26,11 +26,22 @@ const linkList: { label: string; href: string }[] = [
 ].filter(Boolean) as { label: string; href: string }[];
 ---
 
-<article class={`pcard pcard--${variant} ${cover && variant === "grid" ? "pcard--cover" : ""}`} data-status={status}>
+<article class={`pcard pcard--${variant} ${cover || variant === "mini" ? "pcard--cover" : ""}`} data-status={status}>
+  {/* grid cards aren't wrapped in a link, so the thumb is one; mini cards sit
+     inside an outer <a>, so their thumb must be a plain element (no nesting).
+     mini cards always get a thumb — a blueprint "screen" when there's no photo,
+     so a row of them reads as one consistent set. */}
   {cover && variant === "grid" && (
     <a href={href} class="pcard__thumb" tabindex="-1" aria-hidden="true">
       <img src={withBase(cover)} alt={coverAlt || title} loading="lazy" decoding="async" />
     </a>
+  )}
+  {variant === "mini" && (
+    <span class="pcard__thumb" aria-hidden="true">
+      {cover
+        ? <img src={withBase(cover)} alt={coverAlt || title} loading="lazy" decoding="async" />
+        : <span class="pcard__grid"></span>}
+    </span>
   )}
   <div class="pcard__head">
     <span class="led" aria-hidden="true"></span>
@@ -99,6 +110,21 @@ const linkList: { label: string; href: string }[] = [
     transition: transform 0.4s ease;
   }
   .pcard--cover:hover .pcard__thumb img { transform: scale(1.03); }
+  /* mini cards use 16px padding, so the bleed margin matches */
+  .pcard--mini.pcard--cover { padding-top: 0; }
+  .pcard--mini .pcard__thumb { margin: 0 -16px 12px; }
+  /* blueprint "screen" fallback when a mini card has no cover photo */
+  .pcard__grid {
+    display: block;
+    width: 100%;
+    height: 100%;
+    background-color: var(--bg-inset);
+    background-image:
+      linear-gradient(rgba(120, 150, 230, 0.09) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(120, 150, 230, 0.09) 1px, transparent 1px);
+    background-size: 22px 22px;
+    mask-image: radial-gradient(120% 100% at 32% 40%, #000 42%, transparent 92%);
+  }
 
   .pcard__head {
     display: flex;
