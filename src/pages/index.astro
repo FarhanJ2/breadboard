@@ -49,7 +49,16 @@ const status = [
   <main class="container">
     <section class="hero">
       <p class="eyebrow hand">welcome to the workbench <span aria-hidden="true">★</span></p>
-      <h1 class="name">farhan jamil<span class="dot">.</span></h1>
+      <h1 class="name">
+        <img
+          class="name__sig"
+          src={withBase("/signature-dark.svg")}
+          alt="farhan jamil"
+          width="760"
+          height="147"
+          fetchpriority="high"
+        />
+      </h1>
       <p class="tagline">
         a journal of <em>engineering</em>, robotics &amp; things I actually shipped
       </p>
@@ -197,19 +206,21 @@ const status = [
   }
 
   /* --- hero --- */
-  .hero { padding: clamp(28px, 7vw, 72px) 0 clamp(30px, 5vw, 54px); max-width: 40ch; }
+  .hero { padding: clamp(28px, 7vw, 72px) 0 clamp(30px, 5vw, 54px); max-width: 680px; }
   .eyebrow { font-size: 1.4rem; margin: 0 0 6px; }
-  .name {
-    margin: 0;
-    font-size: clamp(3.2rem, 9vw, 6rem);
-    font-weight: 600;
-    font-optical-sizing: auto;
-    letter-spacing: -0.03em;
-    line-height: 0.95;
+  /* the name is the signature SVG — it writes itself, then wipes, on a loop */
+  .name { margin: 0; line-height: 0; }
+  .name__sig {
+    display: block;
+    width: 100%;
+    max-width: 640px;
+    height: auto;
+    /* nudge left so the F's swash lines up with the text below it */
+    margin-left: -1.5%;
   }
-  .name .dot { color: var(--amber); }
   .tagline {
     margin: 0.5rem 0 1.3rem;
+    max-width: 26ch;
     font-size: clamp(1.15rem, 2.4vw, 1.5rem);
     color: var(--ink-soft);
     font-weight: 300;
