@@ -67,7 +67,6 @@ const dateLabel = `${months[date.getMonth()]} ${date.getDate()}, ${date.getFullY
   .stat b { color: var(--phosphor); font-weight: 600; }
 
   .prose { color: var(--ink-soft); font-size: 1.12rem; line-height: 1.7; }
-  .prose :global(p) { margin: 0 0 1.25em; }
   .prose :global(h2) {
     font-size: 1.6rem;
     color: var(--ink);
@@ -83,15 +82,6 @@ const dateLabel = `${months[date.getMonth()]} ${date.getDate()}, ${date.getFullY
     border: 1px solid var(--line-soft);
     padding: 1px 5px;
     border-radius: 4px;
-  }
-  .prose :global(pre) {
-    margin: 1.5em 0;
-    padding: 16px 18px;
-    border: 1px solid var(--line-soft);
-    border-radius: 10px;
-    overflow-x: auto;
-    /* shiki sets its theme background inline; match the page instead */
-    background-color: var(--bg-inset) !important;
   }
   .prose :global(pre code) {
     font-family: var(--font-mono);

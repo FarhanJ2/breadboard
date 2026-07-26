@@ -110,12 +110,11 @@ const ext = [
   .pd__body { position: relative; }
 
   .prose { color: var(--ink-soft); font-size: 1.1rem; line-height: 1.7; margin-top: 26px; }
-  .prose :global(p) { margin: 0 0 1.2em; }
   .prose :global(h2) { font-size: 1.5rem; color: var(--ink); margin: 1.7em 0 0.5em; }
   .prose :global(h3) { font-size: 1.15rem; color: var(--ink); margin: 1.5em 0 0.4em; }
   /* keep anchor jumps from parking a heading right at the viewport edge */
   .prose :global(h2), .prose :global(h3) { scroll-margin-top: 84px; }
-  .prose :global(ul) { margin: 0 0 1.2em; padding-left: 1.2em; }
+  .prose :global(ul) { padding-left: 1.2em; }
   .prose :global(li) { margin: 0.3em 0; }
   .prose :global(a) { color: var(--amber); }
   .prose :global(img) {
@@ -130,17 +129,9 @@ const ext = [
      line fragment instead of around the block */
   .prose :global(:not(pre) > code) {
     font-family: var(--font-mono); font-size: 0.85em;
-    background: var(--bg-raise); border: 1px solid var(--line-soft);
-    padding: 1px 5px; border-radius: 4px;
-  }
-  .prose :global(pre) {
-    margin: 1.5em 0;
-    padding: 16px 18px;
+    background: color-mix(in srgb, var(--bg-raise) 62%, transparent);
     border: 1px solid var(--line-soft);
-    border-radius: 10px;
-    overflow-x: auto;
-    /* shiki sets its theme background inline; match the page instead */
-    background-color: var(--bg-inset) !important;
+    padding: 1px 5px; border-radius: 4px;
   }
   .prose :global(pre code) {
     font-family: var(--font-mono);
@@ -153,7 +144,7 @@ const ext = [
     white-space: pre;
   }
   .prose :global(blockquote) {
-    margin: 1.4em 0; padding: 2px 0 2px 18px;
+    padding-left: 18px;
     border-left: 2px solid var(--line);
     color: var(--ink-faint); font-style: italic;
   }
