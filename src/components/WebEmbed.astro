@@ -43,12 +43,17 @@ const pretty = src.replace(/^https?:\/\//, "").replace(/\/$/, "");
 </figure>
 
 <style>
+  /* a glass bezel: the frame is see-through, the embedded page sits on it like
+     a screen in a case */
   .embed {
     margin: 26px 0;
     border: 1px solid var(--line);
-    border-radius: 12px;
+    border-radius: 14px;
     overflow: hidden;
-    background: var(--bg-inset);
+    background: var(--glass);
+    backdrop-filter: var(--glass-filter);
+    -webkit-backdrop-filter: var(--glass-filter);
+    box-shadow: var(--glass-rim);
   }
 
   /* Break out of the narrow (~760px) writeup column on desktop so embedded
@@ -69,8 +74,10 @@ const pretty = src.replace(/^https?:\/\//, "").replace(/\/$/, "");
     padding: 8px 12px;
     font-size: 12px;
     color: var(--ink-faint);
-    background: var(--bg-raise);
-    border-bottom: 1px solid var(--line);
+    /* a touch denser than the frame so the chrome still reads as a bar, and the
+       url stays legible over whatever art is behind the glass */
+    background: color-mix(in srgb, var(--bg-inset) 42%, transparent);
+    border-bottom: 1px solid var(--line-soft);
   }
   .embed__dots { display: inline-flex; gap: 5px; flex: none; }
   .embed__dots i {
@@ -85,10 +92,12 @@ const pretty = src.replace(/^https?:\/\//, "").replace(/\/$/, "");
   .embed__open { flex: none; color: var(--ink-soft); }
   .embed__open:hover { color: var(--amber); text-decoration: none; }
 
-  .embed__frame { position: relative; height: var(--h); }
+  /* inset so the glass reads as a bezel around the embedded page */
+  .embed__frame { position: relative; height: var(--h); padding: 10px; }
   .embed__frame iframe {
     width: 100%; height: 100%;
     border: 0; display: block;
+    border-radius: 8px;
     background: #0b0d12;
   }
 

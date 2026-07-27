@@ -121,7 +121,10 @@ const fExt = [
     grid-template-columns: 1.1fr 1fr;
     gap: clamp(20px, 3vw, 36px);
     align-items: stretch;
-    background: var(--bg-raise);
+    background: var(--glass);
+    backdrop-filter: var(--glass-filter);
+    -webkit-backdrop-filter: var(--glass-filter);
+    box-shadow: var(--glass-rim);
     border: 1px solid var(--line);
     border-radius: 16px;
     padding: 18px;

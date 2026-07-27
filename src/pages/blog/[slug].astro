@@ -62,7 +62,9 @@ const dateLabel = `${months[date.getMonth()]} ${date.getDate()}, ${date.getFullY
     border: 1px solid var(--line);
     border-radius: 7px;
     color: var(--ink-soft);
-    background: var(--bg-raise);
+    background: var(--glass);
+    backdrop-filter: var(--glass-filter);
+    -webkit-backdrop-filter: var(--glass-filter);
   }
   .stat b { color: var(--phosphor); font-weight: 600; }
 

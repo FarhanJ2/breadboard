@@ -25,6 +25,15 @@
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
 
   --maxw: 1180px;
+
+  /* --- glass surfaces ---
+     Cards use the same recipe as the copy panes, so a card reads as another
+     sheet laid on the scribbles rather than a hole punched through them.
+     Keep the blur low: past ~6px the 1.5px scribble strokes stop coming
+     through and only the marker group survives. */
+  --glass: color-mix(in srgb, var(--bg-raise) 58%, transparent);
+  --glass-filter: blur(6px) saturate(1.4) brightness(1.5);
+  --glass-rim: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 * { box-sizing: border-box; }

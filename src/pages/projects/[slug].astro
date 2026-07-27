@@ -94,7 +94,9 @@ const ext = [
   .meta { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 16px; margin-top: 18px; }
   .stat {
     padding: 5px 11px; border: 1px solid var(--line); border-radius: 7px;
-    background: var(--bg-raise); color: var(--ink-soft);
+    background: var(--glass); color: var(--ink-soft);
+    backdrop-filter: var(--glass-filter);
+    -webkit-backdrop-filter: var(--glass-filter);
   }
   .stat b { color: var(--phosphor); font-weight: 600; }
   .extlink { color: var(--ink-soft); font-size: 0.84rem; letter-spacing: 0.03em; }

@@ -86,7 +86,10 @@ const linkList: { label: string; href: string }[] = [
     position: relative;
     display: flex;
     flex-direction: column;
-    background: var(--bg-raise);
+    background: var(--glass);
+    backdrop-filter: var(--glass-filter);
+    -webkit-backdrop-filter: var(--glass-filter);
+    box-shadow: var(--glass-rim);
     border: 1px solid var(--line);
     border-radius: 12px;
     padding: 18px 18px 16px;
