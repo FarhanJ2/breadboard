@@ -3,6 +3,7 @@ import "../styles/global.css";
 import { ClientRouter } from "astro:transitions";
 import ScribbleBackground from "../components/ScribbleBackground.astro";
 import CursorTrail from "../components/CursorTrail.astro";
+import Lightbox from "../components/Lightbox.astro";
 import { withBase } from "../lib/url";
 
 interface Props {
@@ -38,6 +39,7 @@ const {
   <body>
     {scribbles && <ScribbleBackground />}
     <slot />
+    <Lightbox />
     <CursorTrail />
   </body>
 </html>

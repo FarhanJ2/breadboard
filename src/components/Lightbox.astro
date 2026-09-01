@@ -1,0 +1,408 @@
+---
+/**
+ * Click-to-zoom for writeup images.
+ *
+ * Opens the image over the page with a FLIP grow out of the thumbnail's own
+ * rect, then lets you look closer: wheel to zoom around the pointer, drag to
+ * pan, click to toggle 1x / 2.5x at the point you clicked. Arrows step through
+ * the other images in the same article.
+ *
+ * Scope is deliberate: `.prose img` only, minus PartExplorer (`figure.ds`,
+ * whose images are its own hover-to-highlight states), minus linked images
+ * (the link wins), minus anything marked `data-no-zoom`.
+ */
+---
+
+<div class="lb" hidden role="dialog" aria-modal="true" aria-label="Image viewer">
+  <div class="lb__scrim" data-close></div>
+
+  <img class="lb__img" alt="" draggable="false" />
+
+  <button class="lb__x mono" type="button" aria-label="Close image viewer">esc ✕</button>
+  <button class="lb__arrow lb__arrow--prev" type="button" aria-label="Previous image">←</button>
+  <button class="lb__arrow lb__arrow--next" type="button" aria-label="Next image">→</button>
+
+  <div class="lb__bar mono">
+    <span class="lb__cap"></span>
+    <span class="lb__count"></span>
+  </div>
+</div>
+
+<style>
+  /* zoomable images in the prose get a hover tell, since the pointer ring
+     opening over them is the only other affordance */
+  :global(.prose img[data-zoomable]) {
+    transition: border-color 180ms ease, box-shadow 180ms ease;
+  }
+  :global(.prose img[data-zoomable]:hover),
+  :global(.prose img[data-zoomable]:focus-visible) {
+    border-color: color-mix(in srgb, var(--amber) 55%, var(--line));
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--amber) 12%, transparent);
+  }
+
+  /* under the trail canvas (60) and the ring (61): the cursor stays on top */
+  .lb {
+    position: fixed;
+    inset: 0;
+    z-index: 55;
+    display: grid;
+    place-items: center;
+  }
+  .lb[hidden] { display: none; }
+
+  .lb__scrim {
+    position: absolute;
+    inset: 0;
+    background: color-mix(in srgb, #06070a 88%, transparent);
+    backdrop-filter: blur(7px) saturate(0.9);
+    -webkit-backdrop-filter: blur(7px) saturate(0.9);
+    opacity: 0;
+    transition: opacity 260ms ease;
+  }
+  .lb.is-open .lb__scrim { opacity: 1; }
+
+  .lb__img {
+    position: relative;
+    max-width: 92vw;
+    max-height: 84vh;
+    width: auto;
+    height: auto;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    box-shadow: 0 30px 90px rgba(0, 0, 0, 0.6);
+    user-select: none;
+    -webkit-user-drag: none;
+    /* the pan/zoom transform is written here; the open/close FLIP runs as a
+       WAAPI animation on top, so the two never fight over one style property */
+    transform-origin: center;
+    will-change: transform;
+    touch-action: none;
+  }
+
+  .lb__x,
+  .lb__arrow {
+    position: absolute;
+    z-index: 2;
+    border: 1px solid var(--line);
+    background: color-mix(in srgb, var(--bg-raise) 70%, transparent);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    color: var(--ink-soft);
+    border-radius: 8px;
+    opacity: 0;
+    transition: opacity 260ms ease, color 160ms ease, border-color 160ms ease;
+  }
+  .lb.is-open .lb__x,
+  .lb.is-open .lb__arrow { opacity: 1; }
+  .lb__x:hover,
+  .lb__arrow:hover { color: var(--amber); border-color: color-mix(in srgb, var(--amber) 45%, var(--line)); }
+
+  .lb__x {
+    top: 18px;
+    right: 20px;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    padding: 7px 11px 6px;
+  }
+  .lb__arrow {
+    top: 50%;
+    margin-top: -20px;
+    width: 40px;
+    height: 40px;
+    font-size: 16px;
+    line-height: 1;
+    font-family: var(--font-mono);
+  }
+  .lb__arrow--prev { left: 20px; }
+  .lb__arrow--next { right: 20px; }
+  .lb.is-single .lb__arrow,
+  .lb.is-single .lb__count { display: none; }
+
+  .lb__bar {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 18px;
+    z-index: 2;
+    display: flex;
+    justify-content: center;
+    align-items: baseline;
+    gap: 14px;
+    padding-inline: 74px;
+    color: var(--ink-faint);
+    font-size: 11.5px;
+    letter-spacing: 0.05em;
+    text-align: center;
+    opacity: 0;
+    transition: opacity 260ms ease;
+    pointer-events: none;
+  }
+  .lb.is-open .lb__bar { opacity: 1; }
+  /* pills, like the controls: zoomed in, the image runs under this bar and a
+     bare caption disappears into a bright photo */
+  .lb__cap,
+  .lb__count {
+    padding: 6px 10px 5px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--bg-raise) 72%, transparent);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+  }
+  .lb__cap { color: var(--ink-soft); max-width: 60ch; }
+  .lb__cap:empty { display: none; }
+  .lb__count { color: var(--ink-faint); white-space: nowrap; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .lb__scrim, .lb__x, .lb__arrow, .lb__bar { transition: none; }
+  }
+</style>
+
+<script>
+  const ZOOMABLE = ".prose img";
+  /* PartExplorer's stage images are its own hover states, not photos to open;
+     a linked image belongs to its link; data-no-zoom is the escape hatch. */
+  const SKIP = "figure.ds, a, [data-no-zoom]";
+  const MAX_SCALE = 6;
+  const CLICK_SCALE = 2.5;
+  const DRAG_SLOP = 4; // px of movement below which a drag still counts as a click
+
+  function initLightbox(root: ParentNode) {
+    const lb = root.querySelector<HTMLElement>(".lb");
+    if (!lb) return;
+    const big = lb.querySelector<HTMLImageElement>(".lb__img")!;
+    const cap = lb.querySelector<HTMLElement>(".lb__cap")!;
+    const count = lb.querySelector<HTMLElement>(".lb__count")!;
+    const btnX = lb.querySelector<HTMLElement>(".lb__x")!;
+    const btnPrev = lb.querySelector<HTMLElement>(".lb__arrow--prev")!;
+    const btnNext = lb.querySelector<HTMLElement>(".lb__arrow--next")!;
+
+    const shots = Array.from(root.querySelectorAll<HTMLImageElement>(ZOOMABLE)).filter(
+      (im) => !im.closest(SKIP),
+    );
+    if (!shots.length) return;
+
+    for (const im of shots) {
+      im.dataset.zoomable = "";
+      im.setAttribute("role", "button");
+      im.setAttribute("tabindex", "0");
+      im.setAttribute("aria-label", `Zoom image: ${im.alt || "untitled"}`);
+    }
+    lb.classList.toggle("is-single", shots.length === 1);
+
+    // --- state ---------------------------------------------------------------
+    let index = -1;
+    let scale = 1;
+    let tx = 0;
+    let ty = 0;
+    let baseW = 0, baseH = 0, baseCx = 0, baseCy = 0; // the untransformed layout box
+    let dragging = false;
+    let moved = 0;
+    let px = 0, py = 0;
+    let restoreFocus: HTMLElement | null = null;
+    let scrollLock = "";
+
+    const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+
+    function apply() {
+      // never let a zoomed image be dragged fully off the viewport
+      const maxX = Math.max(0, (baseW * scale - window.innerWidth) / 2 + 40);
+      const maxY = Math.max(0, (baseH * scale - window.innerHeight) / 2 + 40);
+      tx = clamp(tx, -maxX, maxX);
+      ty = clamp(ty, -maxY, maxY);
+      big.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
+      big.style.cursor = scale > 1 ? "grab" : "";
+    }
+
+    function measure() {
+      big.style.transform = "";
+      const r = big.getBoundingClientRect();
+      baseW = r.width; baseH = r.height;
+      baseCx = r.left + r.width / 2;
+      baseCy = r.top + r.height / 2;
+      apply();
+    }
+
+    /** Zoom to `next`, keeping the image point under (sx, sy) parked there. */
+    function zoomAt(next: number, sx: number, sy: number) {
+      const s1 = clamp(next, 1, MAX_SCALE);
+      const k = s1 / scale;
+      const cx = baseCx + tx;
+      const cy = baseCy + ty;
+      tx = sx - (sx - cx) * k - baseCx;
+      ty = sy - (sy - cy) * k - baseCy;
+      scale = s1;
+      if (scale === 1) { tx = 0; ty = 0; }
+      apply();
+    }
+
+    function show(i: number, animateFrom?: DOMRect) {
+      index = (i + shots.length) % shots.length;
+      const src = shots[index];
+      big.src = src.currentSrc || src.src;
+      big.alt = src.alt || "";
+      cap.textContent = src.alt || "";
+      count.textContent = shots.length > 1 ? `${index + 1} / ${shots.length}` : "";
+      scale = 1; tx = 0; ty = 0;
+
+      const start = () => {
+        measure();
+        if (!animateFrom) return;
+        const to = big.getBoundingClientRect();
+        if (!to.width) return;
+        const s = animateFrom.width / to.width;
+        const dx = animateFrom.left + animateFrom.width / 2 - (to.left + to.width / 2);
+        const dy = animateFrom.top + animateFrom.height / 2 - (to.top + to.height / 2);
+        big.animate(
+          [
+            { transform: `translate(${dx}px, ${dy}px) scale(${s})`, opacity: 0.55 },
+            { transform: "translate(0px, 0px) scale(1)", opacity: 1 },
+          ],
+          { duration: 330, easing: "cubic-bezier(.22,1,.36,1)" },
+        );
+      };
+
+      // a cached image is already complete; a cold one has no box to measure yet
+      if (big.complete && big.naturalWidth) start();
+      else big.addEventListener("load", start, { once: true });
+    }
+
+    function open(i: number) {
+      restoreFocus = document.activeElement as HTMLElement | null;
+      lb.hidden = false;
+      // lock the page behind the scrim, compensating for the scrollbar it takes
+      const gap = window.innerWidth - document.documentElement.clientWidth;
+      scrollLock = document.documentElement.style.cssText;
+      document.documentElement.style.overflow = "hidden";
+      if (gap > 0) document.documentElement.style.paddingRight = `${gap}px`;
+      show(i, shots[i].getBoundingClientRect());
+      requestAnimationFrame(() => lb.classList.add("is-open"));
+      btnX.focus({ preventScroll: true });
+    }
+
+    function close() {
+      if (lb.hidden) return;
+      const thumb = shots[index];
+      const from = big.getBoundingClientRect();
+      const to = thumb?.getBoundingClientRect();
+      lb.classList.remove("is-open");
+
+      const done = () => {
+        lb.hidden = true;
+        big.removeAttribute("src");
+        document.documentElement.style.cssText = scrollLock;
+        restoreFocus?.focus?.({ preventScroll: true });
+      };
+
+      // Shrink back into the thumbnail when it's still on screen; otherwise
+      // (you arrowed to an image that's scrolled out of view) just settle out in
+      // place. Both paths animate and hang the teardown off the same promise —
+      // a bare setTimeout would cut the image at 200ms while the scrim is still
+      // fading, and it would drift out of sync with the CSS if either changed.
+      const onScreen = !!to && to.width > 0 && to.bottom > 0 && to.top < window.innerHeight;
+      const end = onScreen
+        ? {
+            transform: `translate(${tx + to!.left + to!.width / 2 - (from.left + from.width / 2)}px, ${
+              ty + to!.top + to!.height / 2 - (from.top + from.height / 2)
+            }px) scale(${scale * (to!.width / from.width)})`,
+            opacity: 0.3,
+          }
+        : { transform: `translate(${tx}px, ${ty}px) scale(${scale * 0.94})`, opacity: 0 };
+
+      const a = big.animate(
+        [{ transform: big.style.transform || "none", opacity: 1 }, end],
+        { duration: onScreen ? 240 : 200, easing: "cubic-bezier(.4,0,.6,1)" },
+      );
+      a.finished.then(done, done);
+    }
+
+    // --- opening -------------------------------------------------------------
+    function onThumbClick(e: MouseEvent) {
+      const im = (e.target as Element)?.closest?.("img[data-zoomable]") as HTMLImageElement | null;
+      if (!im) return;
+      const i = shots.indexOf(im);
+      if (i < 0) return;
+      e.preventDefault();
+      open(i);
+    }
+    function onThumbKey(e: KeyboardEvent) {
+      if (e.key !== "Enter" && e.key !== " ") return;
+      const im = document.activeElement as HTMLImageElement | null;
+      if (!im?.matches?.("img[data-zoomable]")) return;
+      e.preventDefault();
+      open(shots.indexOf(im));
+    }
+
+    // --- inside the viewer ---------------------------------------------------
+    function onKey(e: KeyboardEvent) {
+      if (lb.hidden) return;
+      if (e.key === "Escape") { e.preventDefault(); close(); }
+      else if (e.key === "ArrowRight" && shots.length > 1) show(index + 1);
+      else if (e.key === "ArrowLeft" && shots.length > 1) show(index - 1);
+      else if (e.key === "0") { scale = 1; tx = ty = 0; apply(); }
+    }
+
+    function onWheel(e: WheelEvent) {
+      if (lb.hidden) return;
+      e.preventDefault();
+      zoomAt(scale * Math.exp(-e.deltaY * 0.0016), e.clientX, e.clientY);
+    }
+
+    function onDown(e: PointerEvent) {
+      if (lb.hidden || e.button !== 0) return;
+      dragging = true;
+      moved = 0;
+      px = e.clientX; py = e.clientY;
+      if (e.target === big) big.setPointerCapture(e.pointerId);
+    }
+    function onMove(e: PointerEvent) {
+      if (!dragging) return;
+      const dx = e.clientX - px, dy = e.clientY - py;
+      px = e.clientX; py = e.clientY;
+      moved += Math.abs(dx) + Math.abs(dy);
+      if (scale > 1) { tx += dx; ty += dy; apply(); }
+    }
+    function onUp(e: PointerEvent) {
+      if (!dragging) return;
+      dragging = false;
+      if (moved > DRAG_SLOP) return; // that was a pan, not a click
+      const t = e.target as Element;
+      if (t === big) {
+        // click the image to toggle a closer look at the point you clicked
+        zoomAt(scale > 1 ? 1 : CLICK_SCALE, e.clientX, e.clientY);
+      } else if (t.hasAttribute?.("data-close") || t === lb) {
+        close();
+      }
+    }
+
+    const onResize = () => { if (!lb.hidden) measure(); };
+
+    document.addEventListener("click", onThumbClick);
+    document.addEventListener("keydown", onThumbKey);
+    document.addEventListener("keydown", onKey);
+    lb.addEventListener("wheel", onWheel, { passive: false });
+    lb.addEventListener("pointerdown", onDown);
+    lb.addEventListener("pointermove", onMove);
+    lb.addEventListener("pointerup", onUp);
+    lb.addEventListener("pointercancel", () => (dragging = false));
+    btnX.addEventListener("click", close);
+    btnPrev.addEventListener("click", () => show(index - 1));
+    btnNext.addEventListener("click", () => show(index + 1));
+    window.addEventListener("resize", onResize);
+
+    return () => {
+      if (!lb.hidden) { lb.hidden = true; document.documentElement.style.cssText = scrollLock; }
+      document.removeEventListener("click", onThumbClick);
+      document.removeEventListener("keydown", onThumbKey);
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", onResize);
+    };
+  }
+
+  let stopLightbox: (() => void) | null = null;
+  function boot() {
+    stopLightbox?.();
+    stopLightbox = initLightbox(document) ?? null;
+  }
+  document.addEventListener("astro:page-load", boot);
+</script>
