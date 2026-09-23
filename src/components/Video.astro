@@ -1,0 +1,370 @@
+---
+/**
+ * Muted looping clip for writeups — plays like a GIF, but as a ~2 MB MP4.
+ * preload="none" + an IntersectionObserver means nothing downloads until the
+ * clip scrolls into view, and it pauses again when it leaves.
+ *
+ * Custom controls instead of the browser's: amber scrubber, mono timecode,
+ * and a slow-mo toggle (1× → ½× → ¼×) because the point of these clips is
+ * usually watching one thing happen fast. A manual pause sticks — scrolling
+ * away and back won't restart it.
+ *
+ * `controls={false}` drops all of that for a bare GIF-style loop: no bar, no
+ * click-to-pause. The centre play button survives only under reduced motion,
+ * where nothing autoplays and it's the one way to start the clip.
+ *
+ * Encode sources as H.264 MP4 (iPhone .MOV is HEVC, which Chrome/Firefox on
+ * most machines won't play) with +faststart.
+ */
+import { imageAttrs, withBase } from "../lib/url";
+
+interface Props {
+  /** site-root-relative path to the .mp4 */
+  src: string;
+  /** site-root-relative still shown before playback */
+  poster?: string;
+  caption?: string;
+  /** false → bare autoplaying loop with no player UI */
+  controls?: boolean;
+}
+const { src, poster, caption, controls = true } = Astro.props;
+const posterSrc = poster ? (await imageAttrs(poster, "")).src : undefined;
+---
+
+<figure class:list={["vid", { "vid--bare": !controls }]} data-state="paused">
+  <div class="vid__frame">
+    <video
+      src={withBase(src)}
+      poster={posterSrc}
+      muted
+      loop
+      playsinline
+      preload="none"
+      aria-label={caption}
+    ></video>
+
+    <button class="vid__big" type="button" aria-label="Play" tabindex="-1">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10.5-6.5z" /></svg>
+    </button>
+
+    {controls && (
+    <div class="vid__bar">
+      <button class="vid__btn vid__play" type="button" aria-label="Play">
+        <svg class="i-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10.5-6.5z" /></svg>
+        <svg class="i-pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z" /></svg>
+      </button>
+
+      <input class="vid__seek" type="range" min="0" max="1000" step="1" value="0" aria-label="Seek" />
+
+      <span class="vid__time mono" aria-hidden="true"><b class="vid__cur">0:00.0</b><i>/</i><span class="vid__dur">0:00.0</span></span>
+
+      <button class="vid__btn vid__rate mono" type="button" aria-label="Playback speed">1×</button>
+
+      <button class="vid__btn vid__mute" type="button" aria-label="Unmute">
+        <svg class="i-muted" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" /><path class="stroke" d="M16 9.5l5 5M21 9.5l-5 5" /></svg>
+        <svg class="i-sound" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" /><path class="stroke" d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11" /></svg>
+      </button>
+
+      <button class="vid__btn vid__fs" type="button" aria-label="Fullscreen">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path class="stroke" d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" /></svg>
+      </button>
+    </div>
+    )}
+  </div>
+  {caption && <figcaption class="vid__cap">{caption}</figcaption>}
+</figure>
+
+<style>
+  .vid { margin: 1.6em 0; }
+  .vid__frame {
+    position: relative;
+    aspect-ratio: 16 / 9;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    background: #000;
+    overflow: hidden;
+    isolation: isolate;
+  }
+  .vid__frame:fullscreen { border: none; border-radius: 0; aspect-ratio: auto; }
+  .vid video {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    cursor: pointer;
+  }
+
+  /* --- centre play button, only while paused --- */
+  .vid__big {
+    position: absolute;
+    inset: 50% auto auto 50%;
+    width: 64px; height: 64px;
+    translate: -50% -50%;
+    display: grid; place-items: center;
+    border-radius: 50%;
+    border: 1px solid color-mix(in srgb, var(--amber) 55%, transparent);
+    background: color-mix(in srgb, var(--bg) 55%, transparent);
+    backdrop-filter: blur(6px);
+    color: var(--amber);
+    cursor: pointer;
+    transition: opacity 0.25s ease, scale 0.25s ease;
+  }
+  .vid__big svg { width: 26px; height: 26px; fill: currentColor; margin-left: 3px; }
+  .vid__big:hover { scale: 1.06; }
+  .vid[data-state="playing"] .vid__big { opacity: 0; scale: 0.85; pointer-events: none; }
+
+  /* bare loop: reads as an image, not a player */
+  .vid--bare video { cursor: auto; }
+  .vid--bare .vid__big { display: none; }
+  @media (prefers-reduced-motion: reduce) {
+    .vid--bare .vid__big { display: grid; }
+  }
+
+  /* --- control bar --- */
+  .vid__bar {
+    position: absolute;
+    inset: auto 0 0 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 28px 12px 10px;
+    background: linear-gradient(to top, rgba(8, 10, 14, 0.88), rgba(8, 10, 14, 0.5) 55%, transparent);
+    transition: opacity 0.3s ease, translate 0.3s ease;
+  }
+  /* playing + pointer idle → tuck the bar away */
+  .vid[data-state="playing"][data-idle] .vid__bar { opacity: 0; translate: 0 6px; pointer-events: none; }
+
+  .vid__btn {
+    appearance: none;
+    flex: none;
+    display: grid; place-items: center;
+    height: 30px; min-width: 30px;
+    padding: 0 4px;
+    border: none;
+    border-radius: 7px;
+    background: none;
+    color: var(--ink);
+    cursor: pointer;
+    transition: color 0.15s ease, background-color 0.15s ease;
+  }
+  .vid__btn:hover { color: var(--amber); background: rgba(255, 255, 255, 0.06); }
+  .vid__btn:focus-visible, .vid__big:focus-visible, .vid__seek:focus-visible {
+    outline: 2px solid var(--amber); outline-offset: 2px;
+  }
+  .vid__btn svg { width: 19px; height: 19px; fill: currentColor; }
+  .vid__btn svg .stroke { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+  .vid__play .i-pause, .vid[data-state="playing"] .vid__play .i-play { display: none; }
+  .vid[data-state="playing"] .vid__play .i-pause { display: block; }
+  .vid__mute .i-sound, .vid[data-sound] .vid__mute .i-muted { display: none; }
+  .vid[data-sound] .vid__mute .i-sound { display: block; }
+
+  .vid__rate { font-size: 12px; font-weight: 600; letter-spacing: 0.02em; min-width: 38px; }
+  .vid[data-slow] .vid__rate { color: var(--amber); }
+
+  .vid__time {
+    flex: none;
+    font-size: 11.5px;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink-faint);
+    padding: 0 4px;
+  }
+  .vid__time b { color: var(--ink); font-weight: 500; }
+  .vid__time i { font-style: normal; margin: 0 4px; opacity: 0.6; }
+
+  /* --- scrubber: an amber fill painted from --p, thumb grows on hover --- */
+  .vid__seek {
+    --p: 0%;
+    flex: 1;
+    min-width: 60px;
+    height: 18px;
+    margin: 0 4px;
+    appearance: none;
+    background: transparent;
+    cursor: pointer;
+  }
+  .vid__seek::-webkit-slider-runnable-track {
+    height: 3px;
+    border-radius: 3px;
+    background: linear-gradient(to right, var(--amber) var(--p), rgba(255, 255, 255, 0.2) var(--p));
+    transition: height 0.15s ease;
+  }
+  .vid__seek::-moz-range-track {
+    height: 3px;
+    border-radius: 3px;
+    background: linear-gradient(to right, var(--amber) var(--p), rgba(255, 255, 255, 0.2) var(--p));
+  }
+  .vid__seek::-webkit-slider-thumb {
+    appearance: none;
+    width: 11px; height: 11px;
+    margin-top: -4px;
+    border-radius: 50%;
+    background: var(--amber);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--amber) 25%, transparent);
+    scale: 0.6;
+    transition: scale 0.15s ease;
+  }
+  .vid__seek::-moz-range-thumb {
+    width: 11px; height: 11px;
+    border: none;
+    border-radius: 50%;
+    background: var(--amber);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--amber) 25%, transparent);
+    scale: 0.6;
+    transition: scale 0.15s ease;
+  }
+  .vid__seek:hover::-webkit-slider-thumb, .vid__seek:active::-webkit-slider-thumb { scale: 1; }
+  .vid__seek:hover::-moz-range-thumb, .vid__seek:active::-moz-range-thumb { scale: 1; }
+
+  .vid__cap {
+    margin-top: 0.6em;
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    color: var(--ink-faint);
+  }
+
+  /* phones: drop the timecode's total so the scrubber keeps some length */
+  @media (max-width: 520px) {
+    .vid__bar { gap: 2px; padding: 24px 6px 6px; }
+    .vid__time i, .vid__dur { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .vid__bar, .vid__big { transition: none; }
+  }
+</style>
+
+<script>
+  const RATES = [1, 0.5, 0.25];
+  const RATE_LABEL: Record<number, string> = { 1: "1×", 0.5: "½×", 0.25: "¼×" };
+
+  const fmt = (t: number) => {
+    if (!isFinite(t)) t = 0;
+    const m = Math.floor(t / 60);
+    const s = (t % 60).toFixed(1).padStart(4, "0");
+    return `${m}:${s}`;
+  };
+
+  function initVideo(fig: HTMLElement, io: IntersectionObserver) {
+    const v = fig.querySelector("video")!;
+    const frame = fig.querySelector<HTMLElement>(".vid__frame")!;
+    const seek = fig.querySelector<HTMLInputElement>(".vid__seek")!;
+    const cur = fig.querySelector<HTMLElement>(".vid__cur")!;
+    const dur = fig.querySelector<HTMLElement>(".vid__dur")!;
+    const btnPlay = fig.querySelector<HTMLButtonElement>(".vid__play")!;
+    const btnBig = fig.querySelector<HTMLButtonElement>(".vid__big")!;
+    const btnRate = fig.querySelector<HTMLButtonElement>(".vid__rate")!;
+    const btnMute = fig.querySelector<HTMLButtonElement>(".vid__mute")!;
+    const btnFs = fig.querySelector<HTMLButtonElement>(".vid__fs")!;
+
+    // ClientRouter parses the next page in a detached document before swapping
+    // it in; the <video> resolves its src there, Chrome rejects it ("URL safety
+    // check"), and it never retries once adopted — stuck on the poster. Kick
+    // resource selection again. With preload="none" this fetches nothing yet.
+    if (v.error || v.networkState === HTMLMediaElement.NETWORK_NO_SOURCE) v.load();
+
+    let scrubbing = false;
+    let raf = 0;
+
+    const paint = () => {
+      const p = v.duration ? v.currentTime / v.duration : 0;
+      if (!scrubbing) seek.value = String(Math.round(p * 1000));
+      seek.style.setProperty("--p", `${(Number(seek.value) / 10).toFixed(2)}%`);
+      cur.textContent = fmt(v.currentTime);
+    };
+    // timeupdate only fires ~4×/s, which makes the bar step; follow frames while playing
+    const loop = () => { paint(); raf = requestAnimationFrame(loop); };
+
+    const toggle = () => {
+      if (v.paused) { delete fig.dataset.userPaused; v.play().catch(() => {}); }
+      else { fig.dataset.userPaused = "1"; v.pause(); }
+    };
+
+    if (fig.classList.contains("vid--bare")) {
+      v.addEventListener("play", () => { fig.dataset.state = "playing"; });
+      v.addEventListener("pause", () => { fig.dataset.state = "paused"; });
+      btnBig.addEventListener("click", toggle);
+      io.observe(v);
+      return () => {};
+    }
+
+    v.addEventListener("play", () => {
+      fig.dataset.state = "playing";
+      btnPlay.setAttribute("aria-label", "Pause");
+      cancelAnimationFrame(raf); raf = requestAnimationFrame(loop);
+      bumpIdle();
+    });
+    v.addEventListener("pause", () => {
+      fig.dataset.state = "paused";
+      btnPlay.setAttribute("aria-label", "Play");
+      cancelAnimationFrame(raf); paint();
+    });
+    v.addEventListener("loadedmetadata", () => { dur.textContent = fmt(v.duration); paint(); });
+    v.addEventListener("seeked", paint);
+
+    v.addEventListener("click", toggle);
+    btnPlay.addEventListener("click", toggle);
+    btnBig.addEventListener("click", toggle);
+
+    seek.addEventListener("input", () => {
+      scrubbing = true;
+      if (v.duration) v.currentTime = (Number(seek.value) / 1000) * v.duration;
+      paint();
+    });
+    seek.addEventListener("change", () => { scrubbing = false; });
+
+    btnRate.addEventListener("click", () => {
+      const next = RATES[(RATES.indexOf(v.playbackRate) + 1) % RATES.length] ?? 1;
+      v.playbackRate = next;
+      btnRate.textContent = RATE_LABEL[next];
+      fig.toggleAttribute("data-slow", next !== 1);
+    });
+
+    btnMute.addEventListener("click", () => {
+      v.muted = !v.muted;
+      fig.toggleAttribute("data-sound", !v.muted);
+      btnMute.setAttribute("aria-label", v.muted ? "Unmute" : "Mute");
+    });
+
+    btnFs.addEventListener("click", () => {
+      if (document.fullscreenElement) document.exitFullscreen();
+      else if (frame.requestFullscreen) frame.requestFullscreen().catch(() => {});
+      // iOS Safari only fullscreens the <video> itself, with its native controls
+      else (v as HTMLVideoElement & { webkitEnterFullscreen?: () => void }).webkitEnterFullscreen?.();
+    });
+
+    // hide the bar after the pointer rests on a playing clip; any touch/move wakes it
+    let idleTimer = 0;
+    function bumpIdle() {
+      delete fig.dataset.idle;
+      clearTimeout(idleTimer);
+      idleTimer = window.setTimeout(() => { fig.dataset.idle = ""; }, 2200);
+    }
+    frame.addEventListener("pointermove", bumpIdle);
+    frame.addEventListener("pointerdown", bumpIdle);
+    frame.addEventListener("focusin", bumpIdle);
+
+    io.observe(v);
+    return () => { cancelAnimationFrame(raf); clearTimeout(idleTimer); };
+  }
+
+  // astro:page-load fires on first load and every view-transition navigation
+  let cleanups: Array<() => void> = [];
+  let io: IntersectionObserver | undefined;
+  function setupVideos() {
+    cleanups.forEach((fn) => fn());
+    cleanups = [];
+    io?.disconnect();
+    const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    io = new IntersectionObserver((entries) => {
+      for (const e of entries) {
+        const v = e.target as HTMLVideoElement;
+        const fig = v.closest<HTMLElement>(".vid")!;
+        // a manual pause wins over scroll-driven autoplay
+        if (e.isIntersecting && !reduced && !fig.dataset.userPaused) v.play().catch(() => {});
+        else if (!e.isIntersecting) v.pause();
+      }
+    }, { threshold: 0.4 });
+    document.querySelectorAll<HTMLElement>(".vid").forEach((fig) => cleanups.push(initVideo(fig, io!)));
+  }
+  document.addEventListener("astro:page-load", setupVideos);
+</script>

@@ -16,6 +16,7 @@ links:
 import RobotExplorer from "../../components/RobotExplorer.astro";
 import SOTMWidget from "../../components/SOTMWidget.astro";
 import WebEmbed from "../../components/WebEmbed.astro";
+import Video from "../../components/Video.astro";
 
 <RobotExplorer />
 
@@ -39,6 +40,13 @@ real hub just misses, by more the faster you're going. The turret doesn't aim at
 aims at a virtual target: the hub's position pushed backward along the robot's velocity by
 however long the shot will be in the air, so the ball and the hub arrive at the same point at
 the same time.
+
+<Video
+  src="/projects/frc-rebuilt-2026/sotm-demo.mp4"
+  poster="/projects/frc-rebuilt-2026/sotm-demo-poster.jpg"
+  caption="shooting on the move — the turret leads the hub while the drivetrain is moving"
+  controls={false}
+/>
 
 The annoying part is that "how long the shot will be in the air" depends on how far away the
 virtual target is, and the virtual target's position depends on how long the shot will be in the
