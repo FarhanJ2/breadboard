@@ -4,7 +4,7 @@ import Base from "../layouts/Base.astro";
 import StatusLine from "../components/StatusLine.astro";
 import PostCard from "../components/PostCard.astro";
 import ProjectCard from "../components/ProjectCard.astro";
-import { withBase } from "../lib/url";
+import { imageAttrs, withBase } from "../lib/url";
 
 const posts = (await getCollection("blog")).sort(
   (a, b) => b.data.date.valueOf() - a.data.date.valueOf(),
@@ -18,6 +18,7 @@ const projects = (await getCollection("projects")).sort(
 // flagship leads (explicit `featured`, else lowest order); the rest fill the row
 const flagship = projects.find((p) => p.data.featured) ?? projects[0];
 const flag = flagship.data;
+const flagCover = flag.cover ? await imageAttrs(flag.cover, "(max-width: 900px) 100vw, 900px") : {};
 const otherBuilds = projects.filter((p) => p.id !== flagship.id);
 
 const statusLabel: Record<string, string> = {
@@ -79,7 +80,7 @@ const status = [
       >
         <div class="feature__media">
           {flag.cover
-            ? <img src={withBase(flag.cover)} alt={flag.coverAlt || flag.title} loading="lazy" decoding="async" />
+            ? <img {...flagCover} alt={flag.coverAlt || flag.title} loading="lazy" decoding="async" />
             : <span class="feature__grid" aria-hidden="true"></span>}
           <span class="feature__badge mono"><span class="led" aria-hidden="true"></span>{statusLabel[flag.status]} · {flag.year}</span>
           <span class="feature__codename mono">{flag.codename}</span>

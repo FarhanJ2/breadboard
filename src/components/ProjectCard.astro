@@ -1,6 +1,6 @@
 ---
 import type { CollectionEntry } from "astro:content";
-import { withBase } from "../lib/url";
+import { imageAttrs, withBase } from "../lib/url";
 
 interface Props {
   project: CollectionEntry<"projects">;
@@ -8,6 +8,7 @@ interface Props {
 }
 const { project, variant = "grid" } = Astro.props;
 const { title, codename, blurb, year, status, tech, stat, links, cover, coverAlt } = project.data;
+const coverImg = cover ? await imageAttrs(cover, variant === "mini" ? "(max-width: 700px) 50vw, 320px" : "(max-width: 700px) 100vw, 480px") : {};
 const href = withBase(`/projects/${project.id}`);
 
 const statusLabel: Record<string, string> = {
@@ -33,13 +34,13 @@ const linkList: { label: string; href: string }[] = [
      so a row of them reads as one consistent set. */}
   {cover && variant === "grid" && (
     <a href={href} class="pcard__thumb" tabindex="-1" aria-hidden="true">
-      <img src={withBase(cover)} alt={coverAlt || title} loading="lazy" decoding="async" />
+      <img {...coverImg} alt={coverAlt || title} loading="lazy" decoding="async" />
     </a>
   )}
   {variant === "mini" && (
     <span class="pcard__thumb" aria-hidden="true">
       {cover
-        ? <img src={withBase(cover)} alt={coverAlt || title} loading="lazy" decoding="async" />
+        ? <img {...coverImg} alt={coverAlt || title} loading="lazy" decoding="async" />
         : <span class="pcard__grid"></span>}
     </span>
   )}

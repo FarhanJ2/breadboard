@@ -2,6 +2,9 @@
 import { defineConfig } from 'astro/config';
 
 import mdx from '@astrojs/mdx';
+import { readdir, readFile, rm } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+import { optimizeImages, responsive } from './src/lib/images.mjs';
 
 const BASE = '/breadboard';
 
@@ -27,12 +30,77 @@ function rehypeBasePaths() {
   };
 }
 
+/**
+ * Swap markdown `![](/projects/x/y.png)` for its resized WebP variants (see
+ * src/lib/images.mjs). Runs before rehypeBasePaths, which prefixes `src`;
+ * `srcset` is prefixed here. The first image is likely the LCP, so only the
+ * rest are lazy.
+ */
+function rehypeResponsiveImages() {
+  return async (tree) => {
+    const imgs = [];
+    const visit = (node) => {
+      if (node.type === 'element' && node.tagName === 'img') imgs.push(node);
+      node.children?.forEach(visit);
+    };
+    visit(tree);
+    await Promise.all(imgs.map(async (node, i) => {
+      const src = node.properties?.src;
+      if (typeof src !== 'string') return;
+      const r = await responsive(src);
+      if (r.srcset) {
+        node.properties.src = r.src;
+        node.properties.srcSet = r.srcset.replace(/(^|, )\//g, `$1${BASE}/`);
+        node.properties.sizes = '(max-width: 800px) 100vw, 760px';
+        node.properties.width = r.width;
+        node.properties.height = r.height;
+      }
+      node.properties.decoding = 'async';
+      if (i > 0) node.properties.loading = 'lazy';
+    }));
+  };
+}
+
+/**
+ * Generates the image variants before dev/build, and keeps the multi-MB
+ * originals out of the deploy when no built page links to them.
+ */
+function responsiveImages() {
+  return {
+    name: 'responsive-images',
+    hooks: {
+      'astro:config:setup': async ({ logger }) => {
+        const n = await optimizeImages();
+        if (n) logger.info(`generated ${n} image variants`);
+      },
+      'astro:build:done': async ({ dir, logger }) => {
+        const out = fileURLToPath(dir);
+        const files = await readdir(out, { recursive: true });
+        const html = (await Promise.all(
+          files.filter((f) => f.endsWith('.html')).map((f) => readFile(`${out}/${f}`, 'utf8')),
+        )).join('\n');
+        let dropped = 0;
+        for (const f of files) {
+          if (!/\.(png|jpe?g)$/i.test(f)) continue;
+          const name = f.split('/').pop();
+          const hasVariant = files.includes(f.replace(/\.(png|jpe?g)$/i, '.1600w.webp'));
+          if (hasVariant && !html.includes(name)) {
+            await rm(`${out}/${f}`);
+            dropped++;
+          }
+        }
+        if (dropped) logger.info(`dropped ${dropped} unreferenced full-size originals from the build`);
+      },
+    },
+  };
+}
+
 // https://astro.build/config
 export default defineConfig({
   site: 'https://farhanj2.github.io',
   base: BASE,
-  integrations: [mdx()],
+  integrations: [responsiveImages(), mdx()],
   markdown: {
-    rehypePlugins: [rehypeBasePaths],
+    rehypePlugins: [rehypeResponsiveImages, rehypeBasePaths],
   },
 });

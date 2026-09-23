@@ -10,7 +10,7 @@
  * per part, named after its `key`. Hotspot coords (hx/hy) are % of the stage.
  */
 import type { Part } from "./partExplorer";
-import { withBase } from "../lib/url";
+import { imageAttrs, withBase } from "../lib/url";
 
 interface Props {
   /** Public path holding the renders, no trailing slash. */
@@ -35,6 +35,10 @@ const {
 } = Astro.props;
 
 const root = withBase(base);
+// the stage is full-bleed on phones, ~960px at most on desktop
+const SIZES = "(max-width: 760px) 100vw, 960px";
+const fullImg = await imageAttrs(`${base}/${full}`, SIZES);
+const partImgs = await Promise.all(parts.map((p) => imageAttrs(`${base}/${p.key}.png`, SIZES)));
 const left = parts.filter((p) => p.side === "left");
 const right = parts.filter((p) => p.side === "right");
 ---
@@ -51,9 +55,9 @@ const right = parts.filter((p) => p.side === "right");
     </div>
 
     <div class="ds__stage">
-      <img class="ds__img is-active" data-key="full" src={`${root}/${full}`} alt={`${label} — full view`} loading="lazy" />
-      {parts.map((p) => (
-        <img class="ds__img" data-key={p.key} src={`${root}/${p.key}.png`} alt={`${label} — ${p.kicker} highlighted`} loading="lazy" />
+      <img class="ds__img is-active" data-key="full" {...fullImg} alt={`${label} — full view`} loading="lazy" />
+      {parts.map((p, i) => (
+        <img class="ds__img" data-key={p.key} {...partImgs[i]} alt={`${label} — ${p.kicker} highlighted`} loading="lazy" />
       ))}
 
       {parts.map((p) => (

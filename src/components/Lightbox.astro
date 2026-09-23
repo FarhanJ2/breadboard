@@ -239,7 +239,7 @@
     function show(i: number, animateFrom?: DOMRect) {
       index = (i + shots.length) % shots.length;
       const src = shots[index];
-      big.src = src.currentSrc || src.src;
+      big.src = src.src; // the 1600w variant, not the (maybe 800w) srcset pick
       big.alt = src.alt || "";
       cap.textContent = src.alt || "";
       count.textContent = shots.length > 1 ? `${index + 1} / ${shots.length}` : "";
