@@ -1,0 +1,438 @@
+---
+/**
+ * AmbientField
+ * ------------
+ * The site's background, drawn by one small WebGL fragment shader. Three looks,
+ * each a MEDIUM from the workbench's own world rather than a picture of it:
+ *
+ *   ink    — a black sketchbook: pale wash blooming across dark paper, darker
+ *            tide lines where a wet edge dried, washi fibres in the sheet
+ *   lamp   — the bench at night: one tungsten lamp's pool with a soft shade
+ *            rim, a faint cone of haze, dust drifting through the beam, grain
+ *   dither — an amber monochrome terminal: a slow field printed through an
+ *            8x8 Bayer screen, 1-bit, chunky 3px pixels, stepping at 12fps
+ *
+ * Try any of them on any page with `?bg=ink|lamp|dither`.
+ *
+ * Cheap on purpose: each look renders at a fraction of CSS resolution and is
+ * upscaled (the dither keeps its pixels hard), frames are throttled, and there
+ * are no filters anywhere. `transition:persist` keeps one context alive across
+ * ClientRouter navigations, so the field carries on instead of restarting.
+ */
+type Variant = "ink" | "lamp" | "dither";
+
+// ── the site's background — change this line to switch ──────────────────────
+const DEFAULT_VARIANT: Variant = "dither";
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface Props {
+  variant?: Variant;
+}
+const { variant = DEFAULT_VARIANT } = Astro.props;
+---
+
+<div class="ambient" data-variant={variant} aria-hidden="true" transition:persist="ambient-field">
+  <canvas></canvas>
+</div>
+
+<style>
+  .ambient {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    overflow: hidden;
+  }
+  .ambient canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    transition: opacity 0.9s ease;
+  }
+  .ambient.is-live canvas { opacity: 1; }
+  /* dither sizes its canvas in whole 3px cells, so the pixels stay square */
+  .ambient[data-pixel] canvas {
+    width: auto;
+    height: auto;
+    image-rendering: pixelated;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ambient canvas { transition: none; }
+  }
+</style>
+
+<script>
+  type Variant = "ink" | "lamp" | "dither";
+
+  /* ---------------------------------------------------------------- GLSL -- */
+
+  const PRELUDE = /* glsl */ `
+    #ifdef GL_FRAGMENT_PRECISION_HIGH
+    precision highp float;
+    #else
+    precision mediump float;
+    #endif
+    uniform vec2 uRes;    // canvas size in canvas pixels
+    uniform float uTime;  // seconds
+    uniform float uSeed;  // per-visit offset, so no two visits start alike
+    uniform float uPx;    // CSS px per canvas px
+    uniform vec3 uBg;
+    uniform vec3 uInkA;
+    uniform vec3 uInkB;
+
+    // Ashima Arts 3D simplex noise (MIT)
+    vec3 mod289(vec3 x){return x-floor(x*(1.0/289.0))*289.0;}
+    vec4 mod289(vec4 x){return x-floor(x*(1.0/289.0))*289.0;}
+    vec4 permute(vec4 x){return mod289(((x*34.0)+1.0)*x);}
+    vec4 taylorInvSqrt(vec4 r){return 1.79284291400159-0.85373472095314*r;}
+    float snoise(vec3 v){
+      const vec2 C=vec2(1.0/6.0,1.0/3.0);
+      const vec4 D=vec4(0.0,0.5,1.0,2.0);
+      vec3 i=floor(v+dot(v,C.yyy));
+      vec3 x0=v-i+dot(i,C.xxx);
+      vec3 g=step(x0.yzx,x0.xyz);
+      vec3 l=1.0-g;
+      vec3 i1=min(g.xyz,l.zxy);
+      vec3 i2=max(g.xyz,l.zxy);
+      vec3 x1=x0-i1+C.xxx;
+      vec3 x2=x0-i2+C.yyy;
+      vec3 x3=x0-D.yyy;
+      i=mod289(i);
+      vec4 p=permute(permute(permute(i.z+vec4(0.0,i1.z,i2.z,1.0))+i.y+vec4(0.0,i1.y,i2.y,1.0))+i.x+vec4(0.0,i1.x,i2.x,1.0));
+      float n_=0.142857142857;
+      vec3 ns=n_*D.wyz-D.xzx;
+      vec4 j=p-49.0*floor(p*ns.z*ns.z);
+      vec4 x_=floor(j*ns.z);
+      vec4 y_=floor(j-7.0*x_);
+      vec4 x=x_*ns.x+ns.yyyy;
+      vec4 y=y_*ns.x+ns.yyyy;
+      vec4 h=1.0-abs(x)-abs(y);
+      vec4 b0=vec4(x.xy,y.xy);
+      vec4 b1=vec4(x.zw,y.zw);
+      vec4 s0=floor(b0)*2.0+1.0;
+      vec4 s1=floor(b1)*2.0+1.0;
+      vec4 sh=-step(h,vec4(0.0));
+      vec4 a0=b0.xzyw+s0.xzyw*sh.xxyy;
+      vec4 a1=b1.xzyw+s1.xzyw*sh.zzww;
+      vec3 p0=vec3(a0.xy,h.x);
+      vec3 p1=vec3(a0.zw,h.y);
+      vec3 p2=vec3(a1.xy,h.z);
+      vec3 p3=vec3(a1.zw,h.w);
+      vec4 norm=taylorInvSqrt(vec4(dot(p0,p0),dot(p1,p1),dot(p2,p2),dot(p3,p3)));
+      p0*=norm.x;p1*=norm.y;p2*=norm.z;p3*=norm.w;
+      vec4 m=max(0.6-vec4(dot(x0,x0),dot(x1,x1),dot(x2,x2),dot(x3,x3)),0.0);
+      m=m*m;
+      return 42.0*dot(m*m,vec4(dot(p0,x0),dot(p1,x1),dot(p2,x2),dot(p3,x3)));
+    }
+
+    float fbm(vec3 p){
+      float a=0.5, s=0.0;
+      for(int i=0;i<4;i++){ s+=a*snoise(p); p=p*2.03+vec3(17.1,-3.4,9.2); a*=0.5; }
+      return s;
+    }
+
+    // warps only bend coordinates, so their finest octave never shows — skip it
+    float fbm3(vec3 p){
+      float a=0.5, s=0.0;
+      for(int i=0;i<3;i++){ s+=a*snoise(p); p=p*2.03+vec3(17.1,-3.4,9.2); a*=0.5; }
+      return s;
+    }
+
+    float hash12(vec2 p){
+      vec3 p3=fract(vec3(p.xyx)*0.1031);
+      p3+=dot(p3,p3.yzx+33.33);
+      return fract((p3.x+p3.y)*p3.z);
+    }
+  `;
+
+  /** Black sketchbook: pale ink on dark paper. */
+  const INK = /* glsl */ `
+    void main(){
+      vec2 frag=gl_FragCoord.xy;
+      vec2 uv=(frag-0.5*uRes)/uRes.y;
+      float t=uTime*0.016+uSeed;
+      vec2 p=uv*0.75;
+
+      // two-stage domain warp, so the wash creeps and folds instead of
+      // scrolling. Kept gentle: strong warps curdle into marble veins.
+      vec2 q=vec2(fbm3(vec3(p,t)), fbm3(vec3(p+vec2(5.2,1.3),t)));
+      vec2 r=vec2(fbm3(vec3(p+1.1*q+vec2(1.7,9.2),t*1.3)),
+                  fbm3(vec3(p+1.1*q+vec2(8.3,2.8),t*1.3)));
+      float d=fbm(vec3(p+0.9*r,t*0.5));
+
+      // the sheet is static — only the ink moves. Coordinates in CSS px so the
+      // fibre scale doesn't change with the render resolution.
+      vec2 c=frag*uPx;
+      // fibres run at two skewed, non-perpendicular angles: axis-aligned
+      // streaks cross into a woven grid that reads as screen door, not paper
+      vec2 f1=mat2(0.906,0.423,-0.423,0.906)*c;   // ~25deg
+      vec2 f2=mat2(0.766,-0.643,0.643,0.766)*c;   // ~-40deg
+      float fibre=0.5+0.25*snoise(vec3(f1.x*0.008,f1.y*0.06,3.1))
+                     +0.25*snoise(vec3(f2.x*0.05,f2.y*0.009,8.7));
+      // coarse enough to survive the half-res render; a finer tooth aliases
+      // into a screen-door grid across the wash
+      float tooth=0.5+0.5*snoise(vec3(c*0.07,1.7));
+
+      // only the peaks carry ink — most of the sheet stays bare
+      float body=smoothstep(0.1,0.46,d);
+      // backrun: as a wet front dries, pigment piles up just INSIDE its edge —
+      // a hard outer line that softens inward. Symmetric rims read as veins.
+      float tide=smoothstep(0.1,0.125,d)*(1.0-smoothstep(0.125,0.2,d));
+
+      float amt=body*(0.55+0.45*fibre)*0.13 + tide*(0.6+0.4*tooth)*0.06
+               + (fibre-0.5)*0.01;  // the bare sheet still has a little tooth
+      vec3 ink=mix(uInkA,uInkB,smoothstep(0.25,0.62,d)*0.5); // dense pools warm up
+      gl_FragColor=vec4(uBg+ink*amt,1.0);
+    }
+  `;
+
+  /** The bench at night: one lamp, its haze, the dust in it. */
+  const LAMP = /* glsl */ `
+    void main(){
+      vec2 frag=gl_FragCoord.xy;
+      float aspect=uRes.x/uRes.y;
+      vec2 P=vec2(frag.x/uRes.y, frag.y/uRes.y);   // aspect-correct, y up
+      float t=uTime;
+
+      // the pool the shade throws on the bench: foreshortened, hot in the
+      // middle, cut off by the shade's rim rather than fading forever
+      vec2 L=vec2(0.76*aspect,0.70);
+      float dist=length((P-L)*vec2(1.0,1.8));
+      float pool=(0.5+0.5*exp(-dist*dist*6.0))*smoothstep(0.58,0.42,dist);
+
+      // the cone of lit air between the bulb (above the top edge) and the pool
+      vec2 S=vec2(0.96*aspect,1.32);
+      vec2 ax=normalize(L-S);
+      vec2 v=P-S;
+      float along=dot(v,ax);
+      float perp=abs(v.x*ax.y-v.y*ax.x);
+      float halfw=0.05+along*0.36;
+      float reach=length(L-S);
+      float cone=smoothstep(halfw,halfw*0.3,perp)
+                *smoothstep(0.0,0.3,along)
+                *smoothstep(reach+0.3,reach-0.15,along);
+      float air=0.6+0.4*snoise(vec3(P*1.6+vec2(0.0,-t*0.015),t*0.035));
+
+      // dust at three depths — sparse, and only visible where the beam lights it
+      float dust=0.0;
+      for(int i=0;i<3;i++){
+        float fi=float(i);
+        float cell=0.034+fi*0.03;
+        vec2 g=P/cell+vec2(fi*17.0,fi*9.0)+vec2(0.0,t*(0.010+fi*0.007)/cell);
+        vec2 id=floor(g);
+        vec2 f=fract(g)-0.5;
+        float h=hash12(id+fi*31.7);
+        if(h<0.17){
+          float h2=hash12(id*1.37+4.2);
+          float h3=hash12(id*2.11+9.1);
+          vec2 o=0.27*vec2(sin(t*0.21+h2*6.283),cos(t*0.17+h3*6.283));
+          float rad=mix(0.07,0.2,fi*0.5);         // near motes: bigger, softer
+          float soft=mix(0.3,0.92,fi*0.5);
+          float m=smoothstep(rad,rad*(1.0-soft),length(f-o));
+          float glint=0.55+0.45*sin(t*(0.5+h2)+h3*20.0); // tumbling, catching light
+          dust+=m*glint*mix(1.0,0.5,fi*0.5);
+        }
+      }
+
+      // a monitor left on across the room
+      float fill=exp(-length((P-vec2(-0.1,-0.05))*vec2(1.0,1.3))*2.4);
+
+      vec3 col=uBg;
+      col+=uInkA*pool*0.082;
+      col+=uInkA*cone*air*0.052;
+      col+=uInkA*dust*cone*0.32;
+      col+=uInkB*fill*0.028;
+      col+=(hash12(frag+fract(uTime*13.7)*311.0)-0.5)*0.024; // film grain
+      gl_FragColor=vec4(col,1.0);
+    }
+  `;
+
+  /** Amber monochrome: 1-bit ordered dither. */
+  const DITHER = /* glsl */ `
+    float bayer2(vec2 a){ a=floor(a); return fract(dot(a,vec2(0.5,a.y*0.75))); }
+    float bayer4(vec2 a){ return bayer2(0.5*a)*0.25+bayer2(a); }
+    float bayer8(vec2 a){ return bayer4(0.5*a)*0.25+bayer2(a); }
+
+    void main(){
+      vec2 frag=gl_FragCoord.xy;
+      vec2 uv=(frag-0.5*uRes)/uRes.y;
+      float t=uTime*0.025+uSeed;
+      vec2 w=vec2(fbm3(vec3(uv*1.1,t*0.8)), fbm3(vec3(uv*1.1+vec2(4.1,7.3),t*0.8)));
+      float v=fbm(vec3(uv*1.5+1.4*w,t));
+      // mostly empty; the densest patches top out under half coverage — enough
+      // for the Bayer screen's cross-hatching, not a solid block behind type
+      float tone=smoothstep(0.0,0.62,v);
+      tone=tone*tone*0.44;
+      float on=step(bayer8(frag),tone);
+      gl_FragColor=vec4(mix(uBg,uInkA,on*0.28),1.0);
+    }
+  `;
+
+  const VERT = /* glsl */ `
+    attribute vec2 aPos;
+    void main(){ gl_Position=vec4(aPos,0.0,1.0); }
+  `;
+
+  /**
+   * scale = canvas px per CSS px; cell = hard pixel size in CSS px (dither only).
+   * fps is set by how fast each look actually changes: the wash creeps too slowly
+   * for a 12fps step to show, the lamp runs at film rate so its grain reads as
+   * film, and the dither's stepping is part of the look.
+   */
+  const LOOKS: Record<Variant, { frag: string; scale: number; fps: number; cell?: number; a: string; b: string }> = {
+    ink: { frag: INK, scale: 0.5, fps: 12, a: "--ink", b: "--amber" },
+    lamp: { frag: LAMP, scale: 0.6, fps: 24, a: "--amber", b: "--blueprint" },
+    dither: { frag: DITHER, scale: 1 / 3, fps: 12, cell: 3, a: "--amber", b: "--blueprint" },
+  };
+
+  /* ------------------------------------------------------------ runtime -- */
+
+  /** Resolve a colour token to 0–1 rgb. The browser normalises hex and hsl() alike. */
+  function token(name: string, fallback: [number, number, number]): [number, number, number] {
+    const raw = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    if (!raw) return fallback;
+    const probe = document.createElement("i");
+    probe.style.cssText = "position:absolute;visibility:hidden";
+    probe.style.color = raw;
+    document.body.append(probe);
+    const m = getComputedStyle(probe).color.match(/[\d.]+/g);
+    probe.remove();
+    return m && m.length >= 3 ? [+m[0] / 255, +m[1] / 255, +m[2] / 255] : fallback;
+  }
+
+  function compile(gl: WebGLRenderingContext, type: number, src: string) {
+    const s = gl.createShader(type)!;
+    gl.shaderSource(s, src);
+    gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+      console.warn("[ambient]", gl.getShaderInfoLog(s));
+      return null;
+    }
+    return s;
+  }
+
+  function init() {
+    const host = document.querySelector<HTMLElement>(".ambient");
+    // persisted across navigations: already running, leave it be
+    if (!host || host.classList.contains("is-live")) return;
+    const canvas = host.querySelector("canvas")!;
+
+    const asked = new URLSearchParams(location.search).get("bg");
+    const variant = (asked && asked in LOOKS ? asked : host.dataset.variant) as Variant;
+    const look = LOOKS[variant] ?? LOOKS.ink;
+
+    const gl = canvas.getContext("webgl", {
+      alpha: false,
+      antialias: false,
+      depth: false,
+      stencil: false,
+      powerPreference: "low-power",
+    });
+    const vs = gl && compile(gl, gl.VERTEX_SHADER, VERT);
+    const fs = gl && compile(gl, gl.FRAGMENT_SHADER, PRELUDE + look.frag);
+    if (!gl || !vs || !fs) {
+      host.hidden = true; // the page's own background shows through
+      return;
+    }
+    const prog = gl.createProgram()!;
+    gl.attachShader(prog, vs);
+    gl.attachShader(prog, fs);
+    gl.linkProgram(prog);
+    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+      console.warn("[ambient]", gl.getProgramInfoLog(prog));
+      host.hidden = true;
+      return;
+    }
+    gl.useProgram(prog);
+
+    // one triangle that covers the screen
+    gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+    const aPos = gl.getAttribLocation(prog, "aPos");
+    gl.enableVertexAttribArray(aPos);
+    gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+
+    const u = (n: string) => gl.getUniformLocation(prog, n);
+    const uRes = u("uRes");
+    const uTime = u("uTime");
+    const uPx = u("uPx");
+    gl.uniform1f(u("uSeed"), Math.random() * 97);
+    gl.uniform3fv(u("uBg"), token("--bg", [0.043, 0.051, 0.071]));
+    gl.uniform3fv(u("uInkA"), token(look.a, [1, 0.71, 0.33]));
+    gl.uniform3fv(u("uInkB"), token(look.b, [0.54, 0.63, 0.9]));
+
+    if (look.cell) host.dataset.pixel = "";
+
+    function fit() {
+      const w = host!.clientWidth;
+      const h = host!.clientHeight;
+      if (look.cell) {
+        // whole cells only, drawn at exactly `cell` CSS px each
+        canvas.width = Math.ceil(w / look.cell);
+        canvas.height = Math.ceil(h / look.cell);
+        canvas.style.width = `${canvas.width * look.cell}px`;
+        canvas.style.height = `${canvas.height * look.cell}px`;
+      } else {
+        canvas.width = Math.max(1, Math.round(w * look.scale));
+        canvas.height = Math.max(1, Math.round(h * look.scale));
+      }
+      gl!.viewport(0, 0, canvas.width, canvas.height);
+      gl!.uniform2f(uRes, canvas.width, canvas.height);
+      gl!.uniform1f(uPx, w / canvas.width);
+    }
+
+    const t0 = performance.now();
+    let elapsed = 0;
+    function draw() {
+      gl!.uniform1f(uTime, elapsed);
+      gl!.drawArrays(gl!.TRIANGLES, 0, 3);
+    }
+
+    const motion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    let raf = 0;
+    let last = 0;
+    const frameMs = 1000 / look.fps;
+
+    function frame(now: number) {
+      // a page without a background dropped the persisted field — stop, don't leak
+      if (!host!.isConnected) return stop();
+      raf = requestAnimationFrame(frame);
+      if (now - last < frameMs - 1) return;
+      last = now;
+      elapsed = (now - t0) / 1000;
+      draw();
+    }
+    function start() {
+      if (!raf) raf = requestAnimationFrame(frame);
+    }
+    function stop() {
+      cancelAnimationFrame(raf);
+      raf = 0;
+    }
+
+    // reduced motion: one still frame, redrawn only when the size changes
+    const sync = () => (motion.matches ? (stop(), draw()) : start());
+    motion.addEventListener("change", sync);
+
+    new ResizeObserver(() => {
+      fit();
+      draw();
+    }).observe(host);
+
+    canvas.addEventListener("webglcontextlost", (e) => {
+      e.preventDefault();
+      stop();
+      host.hidden = true;
+    });
+
+    fit();
+    draw();
+    host.classList.add("is-live");
+    sync();
+  }
+
+  document.addEventListener("astro:page-load", init);
+  if (document.readyState !== "loading") init();
+  else document.addEventListener("DOMContentLoaded", init, { once: true });
+</script>

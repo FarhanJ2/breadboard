@@ -1,7 +1,7 @@
 ---
 import "../styles/global.css";
 import { ClientRouter } from "astro:transitions";
-import ScribbleBackground from "../components/ScribbleBackground.astro";
+import AmbientField from "../components/AmbientField.astro";
 import CursorTrail from "../components/CursorTrail.astro";
 import Lightbox from "../components/Lightbox.astro";
 import { withBase } from "../lib/url";
@@ -9,12 +9,12 @@ import { withBase } from "../lib/url";
 interface Props {
   title: string;
   description?: string;
-  scribbles?: boolean;
+  background?: boolean;
 }
 const {
   title,
   description = "Farhan Jamil — a journal of engineering, robotics & lived experiments.",
-  scribbles = true,
+  background = true,
 } = Astro.props;
 ---
 
@@ -37,7 +37,7 @@ const {
     <ClientRouter />
   </head>
   <body>
-    {scribbles && <ScribbleBackground />}
+    {background && <AmbientField />}
     <slot />
     <Lightbox />
     <CursorTrail />
