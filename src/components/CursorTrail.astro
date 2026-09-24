@@ -411,6 +411,14 @@
       armFrameCheck();
     }
 
+    // ...or appear under it: click-to-load players (YouTube.astro) swap an
+    // <iframe> in on click, with the pointer already on top of it. Window
+    // listeners run after the page's own click handlers, so it exists by now.
+    function onClickMaybeFrame() {
+      frameRects = null;
+      armFrameCheck();
+    }
+
     // --- input -------------------------------------------------------------
     const isFrame = (t: EventTarget | null) => {
       const el = t as Element | null;
@@ -524,6 +532,7 @@
     document.addEventListener("visibilitychange", onVis);
     window.addEventListener("resize", resize);
     window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("click", onClickMaybeFrame);
 
     return () => {
       if (raf) cancelAnimationFrame(raf);
@@ -539,6 +548,7 @@
       document.removeEventListener("visibilitychange", onVis);
       window.removeEventListener("resize", resize);
       window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("click", onClickMaybeFrame);
       clearTimeout(frameTimer);
     };
   }

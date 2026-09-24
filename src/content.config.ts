@@ -44,6 +44,21 @@ const projects = defineCollection({
        */
       cover: z.string().optional(),
       coverAlt: z.string().default(""),
+      /**
+       * Full-screen scroll showcase above the writeup. Media defaults to
+       * everything in /public/projects/<slug>/ in filename order (phone .MOV
+       * files are transcoded automatically); list `media` to pick and order
+       * items or give them captions.
+       */
+      showcase: z
+        .object({
+          title: z.string().optional(),
+          tagline: z.string().optional(),
+          media: z
+            .array(z.object({ src: z.string(), caption: z.string().optional() }))
+            .optional(),
+        })
+        .optional(),
       /** external links only — the project's own writeup lives at /projects/<slug> */
       links: z
         .object({

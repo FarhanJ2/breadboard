@@ -9,9 +9,18 @@ tech: ["Java", "AdvantageKit", "Phoenix 6", "PhotonVision", "QuestNav"]
 order: 2
 links:
   github: "https://github.com/steelhawks/Reefscape2025"
+  more:
+    - label: "talk"
+      href: "https://youtu.be/RlaGfXKKq9Q"
+    - label: "slides"
+      href: "https://docs.google.com/presentation/d/1pRy7OdpNAdJwoCkr6iFOdhPGfNEGb-4G/edit?usp=sharing"
+showcase:
+  title: "Chimera"
+  tagline: "Steel Hawks' 2025 robot, and the first codebase we built around AdvantageKit."
 ---
 
 import ReefPlanner from "../../components/ReefPlanner.astro";
+import YouTube from "../../components/YouTube.astro";
 
 # background
 
@@ -25,6 +34,14 @@ are still sitting in the repo.
 I started the repo in January 2025 and ended up writing a bit over half of its ~1,100 commits,
 running through the offseason into January 2026. The biggest change that year wasn't a mechanism.
 It was how the code was structured, and nearly everything else on this page follows from it.
+
+# the talk
+
+After the season I presented a lot of this at StuySplash 2025, StuyPulse's offseason workshop. *Let's Never Miss Again* is a programming
+talk about the systems that let Chimera score the same way every time. It covers elevator interpolation, torque-current FOC, anti-tip, Autopilot
+alignment, ReefState, and QuestNav. The [slides are here](https://docs.google.com/presentation/d/1pRy7OdpNAdJwoCkr6iFOdhPGfNEGb-4G/edit?usp=sharing).
+
+<YouTube id="RlaGfXKKq9Q" title="StuySplash 2025 · Let's Never Miss Again" caption="recorded by StuyPulse" />
 
 # advantagekit
 
@@ -233,6 +250,37 @@ commit that took it out just says "remove kV (using torque current)". In voltage
 exists to cancel the back-EMF a spinning motor generates. In torque control the Talon's current
 loop already handles that, so the only feedforward left is physics: gravity, friction, and inertia.
 
+Torque current isn't better at everything, though. Next to ordinary voltage control (which on a
+TalonFX means trapezoidal commutation rather than FOC), what we saw in testing was that FOC ran
+quieter and cooler, drew less current, and accelerated far harder, especially on short moves.
+Trapezoidal commutation ripples torque and accelerates slower, but it reaches a higher top speed.
+Short moves are all acceleration and long moves are mostly cruising, so the offseason
+```elev-switcher``` branch uses both. Each time the elevator gets a new setpoint it looks at how far
+it has to go. Anything past 20 radians of drum rotation (out of 24, so in practice the home ↔ L4
+trip) runs a faster profile on voltage control; everything else stays on torque current:
+
+```java
+if (fastProfileRunning) {
+    io.runPositionVoltage(
+        setpoint.position,
+        ElevatorConstants.Voltage.kS[getStage()] * Math.signum(setpoint.velocity)
+            + ElevatorConstants.Voltage.kV[getStage()] * setpoint.velocity
+            + ElevatorConstants.Voltage.kG[getStage()]
+            + ElevatorConstants.Voltage.kA[getStage()] * acceleration);
+} else {
+    io.runPosition(
+        setpoint.position,
+        ElevatorConstants.TorqueCurrent.kS[getStage()] * Math.signum(setpoint.velocity)
+            + ElevatorConstants.TorqueCurrent.kG[getStage()]
+            + ElevatorConstants.TorqueCurrent.kA[getStage()] * acceleration);
+}
+```
+
+The two branches make the difference visible: the voltage side needs a ```kV``` term to fight back-EMF,
+and the torque-current side doesn't. Each mode also has its own motion profile (30 rot/s cruise
+for voltage, 25 rot/s with much harder acceleration for torque current) and its own PID slot on the
+Talon, since gains tuned in amps mean nothing in volts.
+
 The elevator also adjusts its own height. Coral on L2 and L3 goes onto branches angled toward the
 robot, so if the robot is scoring from further back than planned, the right height goes up. The
 elevator measures its distance from the score pose and adds height to match, up to 0.6 rotations:
@@ -244,6 +292,36 @@ elevatorDistanceMap.put(0.0, 0.0);
 elevatorDistanceMap.put(Units.inchesToMeters(4.0), 0.5); // 4in is coral diameter, move elevator up by 0.5 rotations
 elevatorDistanceMap.put(Units.inchesToMeters(5.0), ElevatorConstants.ELEVATOR_DISTANCE_INTERPOLATOR_MAX);
 ```
+
+Moving the claw isn't the whole fix, though. The coral still has to travel from the claw to the
+branch, and a fixed shot speed only carries it the right distance from one height at one range.
+So the claw doesn't use a fixed speed either. It treats the coral as a projectile: launched 35°
+downward from the claw's height *H* (elevator travel plus the claw's height off the floor), it
+solves for the exit velocity that carries it the horizontal distance *R* to the branch:
+
+```java
+// v0 = sqrt((g * R^2) / 2cos^2(theta) * (Rtan(theta) + h)
+final double theta = Math.toRadians(-35.0); // claw is angled downwards 35 degrees
+...
+double denom = 2 * Math.pow(Math.cos(theta), 2) * (H + (R * Math.tan(theta)));
+if (denom <= 0) {
+    return !RobotContainer.s_Elevator.getState().equals(ElevatorConstants.State.L4)
+        ? requireNonNullConst(ClawConstants.CLAW_SHOOT_SPEED)
+        : requireNonNullConst(ClawConstants.CLAW_SLOW_SHOOT_SPEED);
+}
+double v0 = Math.sqrt((G * Math.pow(R, 2)) / denom);
+double v0RPS = Conversions.metersToRotations(v0, wheelCircumference);
+...
+return (v0RPS / maxOutputRPS) + kS;
+```
+
+That's the standard projectile equation solved for launch speed. The ```denom <= 0``` guard catches
+the case where no speed works: a 35° downward line from *H* has already dropped below the target
+before it covers *R*, so the equation has no real answer and the claw falls back to its fixed
+presets. Otherwise *v0* becomes wheel rotations per second through the 3" wheel's circumference,
+then a fraction of the motor's top speed plus a small ```kS``` to overcome friction. The whole
+thing sits behind a dashboard toggle, so the drive team could drop back to fixed speeds mid-event
+if it ever misbehaved.
 
 # anti-tip
 

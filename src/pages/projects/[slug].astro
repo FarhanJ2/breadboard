@@ -3,6 +3,7 @@ import { getCollection, render } from "astro:content";
 import Base from "../../layouts/Base.astro";
 import SiteHeader from "../../components/SiteHeader.astro";
 import Toc from "../../components/Toc.astro";
+import Showcase from "../../components/Showcase.astro";
 import { withBase } from "../../lib/url";
 
 export async function getStaticPaths() {
@@ -27,6 +28,16 @@ const ext = [
 
 <Base title={`${d.title} — Projects — Farhan Jamil`} description={d.blurb}>
   <SiteHeader current="projects" />
+
+  {d.showcase && (
+    <Showcase
+      dir={`/projects/${project.id}`}
+      title={d.showcase.title ?? d.title}
+      kicker={`${statusLabel[d.status]} · ${d.codename} · ${d.year}`}
+      tagline={d.showcase.tagline}
+      media={d.showcase.media}
+    />
+  )}
 
   <article class="pd container" data-status={d.status}>
     <a href={withBase("/projects")} class="back mono">← projects</a>

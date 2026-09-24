@@ -70,7 +70,7 @@ function responsiveImages() {
     name: 'responsive-images',
     hooks: {
       'astro:config:setup': async ({ logger }) => {
-        const n = await optimizeImages();
+        const n = await optimizeImages(undefined, (m) => logger.warn(m));
         if (n) logger.info(`generated ${n} image variants`);
       },
       'astro:build:done': async ({ dir, logger }) => {
@@ -81,9 +81,12 @@ function responsiveImages() {
         )).join('\n');
         let dropped = 0;
         for (const f of files) {
-          if (!/\.(png|jpe?g)$/i.test(f)) continue;
+          const isImage = /\.(png|jpe?g)$/i.test(f), isVideo = /\.(mov|m4v)$/i.test(f);
+          if (!isImage && !isVideo) continue;
           const name = f.split('/').pop();
-          const hasVariant = files.includes(f.replace(/\.(png|jpe?g)$/i, '.1600w.webp'));
+          const hasVariant = isImage
+            ? files.includes(f.replace(/\.(png|jpe?g)$/i, '.1600w.webp'))
+            : files.includes(f.replace(/\.(mov|m4v)$/i, '.web.mp4'));
           if (hasVariant && !html.includes(name)) {
             await rm(`${out}/${f}`);
             dropped++;
