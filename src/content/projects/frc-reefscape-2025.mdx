@@ -1,14 +1,314 @@
 ---
-title: "FRC Rebuilt - Steel Hawks"
-codename: "REBUILT"
-blurb: "My last FRC robot."
-year: "2026"
+title: "FRC Reefscape - Steel Hawks"
+codename: "REEFSCAPE"
+blurb: "Chimera: the year we moved to AdvantageKit, and the rewrite of swerve and vision that came with it."
+year: "2025"
 status: "shipped"
 category: "robot"
-tech: ["CAN", "Java", "Electrical", "CAD", "JavaScript"]
-order: 1
-cover: "/projects/frc-rebuilt-2026/robot-side-profile.jpg"
-coverAlt: "Shaquille O'Steel, Steel Hawks' 2026 competition robot, side profile"
+tech: ["Java", "AdvantageKit", "Phoenix 6", "PhotonVision", "QuestNav"]
+order: 2
 links:
-  github: "https://github.com/steelhawks/Rebuilt2026"
+  github: "https://github.com/steelhawks/Reefscape2025"
 ---
+
+import ReefPlanner from "../../components/ReefPlanner.astro";
+
+# background
+
+Chimera was Steel Hawks' robot for REEFSCAPE, the 2025 FRC game: stack coral (lengths of PVC) on
+the branches of a hexagonal reef at four heights, L1 through L4, and pull algae off it. The robot
+was an Mk4n swerve on the L3 ratio, a two-motor elevator that could reach every level, a static
+claw fixed at 35°, an arm for knocking algae off the reef, four PhotonVision cameras, and LEDs for
+talking to the driver. It played all the way to Worlds; logs from our Archimedes division matches
+are still sitting in the repo.
+
+I started the repo in January 2025 and ended up writing a bit over half of its ~1,100 commits,
+running through the offseason into January 2026. The biggest change that year wasn't a mechanism.
+It was how the code was structured, and nearly everything else on this page follows from it.
+
+# advantagekit
+
+Our 2024 code already had AdvantageKit in it, technically. ```Robot.java``` started the logger,
+and two files called ```Logger.recordOutput```. But the subsystems still owned their hardware
+directly. ```Swerve``` built its own ```Pigeon2``` and ```Limelight``` objects and read from them
+wherever it needed to. That means a log could tell you what the robot *did*, but not what it
+*saw*, and without what it saw there's nothing to replay.
+
+For 2025 every subsystem got split in two. The subsystem holds the logic, and an IO interface
+holds everything that touches hardware. Each loop, the IO layer fills an inputs object with
+every sensor reading, and ```Logger.processInputs``` records it before the logic runs. The swerve
+module's inputs look like this:
+
+```java
+@AutoLog
+class ModuleIOInputs {
+    public boolean driveConnected = false;
+    public double drivePositionRad = 0.0;
+    public double driveVelocityRadPerSec = 0.0;
+    public double driveAppliedVolts = 0.0;
+    public double driveCurrentAmps = 0.0;
+    ...
+    public double[] odometryTimestamps = new double[]{};
+    public double[] odometryDrivePositionsRad = new double[]{};
+    public Rotation2d[] odometryTurnPositions = new Rotation2d[]{};
+}
+```
+
+Then which implementation gets plugged in decides what the robot *is*. On the real robot it's
+```ElevatorIOTalonFX```. In simulation it's ```ElevatorIOSim```, with the drivetrain running on a
+maple-sim physics model. And in replay it's nothing at all:
+
+```java
+if (Constants.getMode() == Mode.REPLAY) {
+    s_Swerve =
+        new Swerve(
+            new GyroIO() {},
+            new ModuleIO() {},
+            new ModuleIO() {},
+            new ModuleIO() {},
+            new ModuleIO() {});
+    ...
+    s_Elevator =
+        new Elevator(
+            new ElevatorIO() {});
+```
+
+Empty IO layers. In replay the inputs come from the log file instead of hardware, so the exact
+same code runs against exactly what the robot saw in a real match, as fast as the laptop can
+go. Something went wrong in a qualification match? Add a ```Logger.recordOutput``` for the value
+you wish you'd logged, replay the match, and now you have it. That's a completely different way
+of debugging from "try to make it happen again in the pit."
+
+The same split made the codebase portable across robots. One repo ran four of them (the Alpha
+prototype, Omega (the competition robot), HawkRider from 2024, and the simulator), with
+constants switched per robot:
+
+```java
+public static <T> T value(T hawkrider, T alpha, T omega, T sim) {
+    return switch (Constants.getRobot()) {
+        case ALPHABOT -> alpha;
+        case OMEGABOT -> omega;
+        case HAWKRIDER -> hawkrider;
+        case SIMBOT -> sim;
+    };
+}
+```
+
+The catch with deterministic replay is that *everything* the logic reads has to come through
+logged inputs. Anything that sneaks in from the side, like a NetworkTables callback on its own
+thread, breaks it. That's why this warning sits above the one listener in the codebase:
+
+```java
+reefData.addListener(
+    // WARNING!!!
+    // DO NOT LOG HERE, AdvantageKit is not thread-safe and you will ruin replay
+    // https://docs.advantagekit.org/getting-started/common-issues/multithreading
+    ...
+```
+
+# swerve
+
+I rewrote the swerve on top of that structure. The 2024 modules ran the drive motors on duty cycle
+and velocity-voltage, and odometry updated once per 20 ms robot loop. The new drivetrain changed
+both.
+
+**Odometry runs on its own thread.** ```PhoenixOdometryThread``` samples every module's position
+and the gyro at 250 Hz when the bus is CAN FD (100 Hz otherwise), stamping each sample with the
+time it was taken:
+
+```java
+if (isCANFD && phoenixSignals.length > 0) {
+    BaseStatusSignal.waitForAll(2.0 / Swerve.ODOMETRY_FREQUENCY, phoenixSignals);
+} else {
+    // "waitForAll" does not support blocking on multiple signals with a bus
+    // that is not CAN FD, regardless of Pro licensing. No reasoning for this
+    // behavior is provided by the documentation.
+    Thread.sleep((long) (1000.0 / Swerve.ODOMETRY_FREQUENCY));
+    if (phoenixSignals.length > 0) BaseStatusSignal.refreshAll(phoenixSignals);
+}
+```
+
+The main loop then drains those queues and feeds every sample into the pose estimator with its
+own timestamp, about five per loop instead of one. At full speed the robot covers about 12 cm in
+a 20 ms loop, and a lot of that is curved when it's turning; five straight-line segments follow the
+curve much more closely than one. Because every sample keeps its timestamp, vision measurements can
+be applied at the moment their frame was captured, and the odometry poses also land in a 2-second
+buffer that anything else can ask "where was the robot at time *t*?"
+
+If the gyro drops off the bus mid-match, odometry doesn't die with it. It falls back to
+integrating rotation from the wheels:
+
+```java
+if (gyroInputs.connected) {
+    rawGyroRotation = gyroInputs.odometryYawPositions[i];
+} else {
+    // Use the angle delta from the kinematics and module deltas
+    Twist2d twist = kinematics.toTwist2d(moduleDeltas);
+    rawGyroRotation = rawGyroRotation.plus(new Rotation2d(twist.dtheta));
+}
+```
+
+**The motors run on torque current.** Over the summer, the drive and steer motors moved off
+voltage control and onto Phoenix 6's FOC torque-current control. Instead of asking a TalonFX for a
+voltage, the robot commands the current through the motor directly, and current is proportional to
+torque. Voltage control's response
+sags as the battery does and as the motor speeds up (back-EMF eats into it); a current loop doesn't
+care about either. The drive motors also cap their torque current at the wheel's slip current:
+
+```java
+driveConfig.TorqueCurrent.PeakForwardTorqueCurrent = constants.SlipCurrent;
+driveConfig.TorqueCurrent.PeakReverseTorqueCurrent = -constants.SlipCurrent;
+driveConfig.CurrentLimits.StatorCurrentLimit = constants.SlipCurrent;
+driveConfig.CurrentLimits.StatorCurrentLimitEnable = true;
+```
+
+80.4 A is roughly the most torque the wheels can put into the carpet before they break traction,
+so the motors are never allowed to ask for more. A wheel that isn't spinning out is a wheel whose
+encoder still agrees with where the robot actually went, so this matters for odometry as much as
+for acceleration.
+
+# vision
+
+Vision got the same treatment: one ```Vision``` subsystem over a ```VisionIO``` interface, with
+PhotonVision, Limelight, and simulated-camera implementations behind it. Every camera's
+observations get logged as inputs, then filtered. Anything with no tags, a single high-ambiguity
+tag, a Z coordinate that puts the robot in the air, or a pose off the field gets rejected, and
+both the accepted and rejected poses are logged so a replay can show exactly what got thrown out.
+
+What survives isn't trusted equally. Each estimate's standard deviation scales with the square
+of the average tag distance divided by the number of tags, times a per-camera factor, so one tag
+across the field barely moves the pose and three tags up close move it a lot:
+
+```java
+double stdDevFactor =
+    Math.pow(observation.averageTagDistance(), 2.0) / observation.tagCount();
+double linearStdDev = LINEAR_STD_DEV_BASELINE * stdDevFactor;
+double angularStdDev = ANGULAR_STD_DEV_BASELINE * stdDevFactor;
+```
+
+While the robot is pathfinding to the reef, the tag whitelist narrows to reef tags only, since
+those are the ones that matter for the last few inches.
+
+In the offseason we added QuestNav: a Meta Quest headset on the robot, using its own inside-out
+tracking as a pose source. It's far smoother than AprilTag estimates, so once it's running, the
+camera estimates get standard deviations big enough that the pose estimator ignores them:
+
+```java
+if (useQuestNav && !Robot.isFirstRun()) {
+    assert questNav != null;
+    if (questNav.isRunning()) {
+        linearStdDev = 2601_2601;
+        angularStdDev = 2601_2601;
+    }
+}
+```
+
+The "basically infinity" constant is our team number, twice.
+
+After that came object detection: cameras spotting coral on the carpet and placing it on the
+field. Each detection is projected using the robot's pose *at the moment the frame was captured*,
+pulled from that 2-second pose buffer, so a robot moving at speed doesn't smear its detections
+across the carpet. Detections within 10 cm merge, anything unseen for 5 seconds is dropped, and at
+most five are tracked at a time.
+
+# elevator
+
+The elevator moved to torque current too, in the offseason. The motion profile runs on the
+roboRIO, a trapezoid capped at 25 rotations/s, and each 20 ms setpoint goes to the TalonFX as a
+position target with a feedforward:
+
+```java
+double acceleration = (setpoint.velocity - previousVelocity) / Constants.UPDATE_LOOP_DT;
+io.runPosition(
+    setpoint.position,
+    ElevatorConstants.kS[getStage()] * Math.signum(setpoint.velocity)
+        + ElevatorConstants.kG[getStage()]
+        + ElevatorConstants.kA[getStage()] * acceleration);
+```
+
+Under ```PositionTorqueCurrentFOC``` that feedforward is in amps, not volts, and that changes what
+the terms mean. ```kG``` is 6 A: the current that holds the carriage against gravity, a physical
+constant of the mechanism that doesn't drift as the battery drains. And there's no ```kV```. The
+commit that took it out just says "remove kV (using torque current)". In voltage control, kV
+exists to cancel the back-EMF a spinning motor generates. In torque control the Talon's current
+loop already handles that, so the only feedforward left is physics: gravity, friction, and inertia.
+
+The elevator also adjusts its own height. Coral on L2 and L3 goes onto branches angled toward the
+robot, so if the robot is scoring from further back than planned, the right height goes up. The
+elevator measures its distance from the score pose and adds height to match, up to 0.6 rotations:
+
+```java
+// (distance in meters away from score pose) -> (rotations for elevator)
+// at distance of zero, add zero additional rotations to the elevator height
+elevatorDistanceMap.put(0.0, 0.0);
+elevatorDistanceMap.put(Units.inchesToMeters(4.0), 0.5); // 4in is coral diameter, move elevator up by 0.5 rotations
+elevatorDistanceMap.put(Units.inchesToMeters(5.0), ElevatorConstants.ELEVATOR_DISTANCE_INTERPOLATOR_MAX);
+```
+
+# anti-tip
+
+A tall elevator on a swerve drive is a tipping hazard: with the carriage at L4, the center of
+mass is high enough that a hard stop or a sharp turn can put the robot on its side. The season
+answer was simple: scale the drivetrain's speed down with elevator height.
+
+```java
+// (height in rotations) -> (chassis‐speed multiplier)
+// at 0 rotations, home, go full speed
+elevatorLimiterMap.put(0.0, 1.0);
+elevatorLimiterMap.put(Units.radiansToRotations(12.0), 0.5);
+elevatorLimiterMap.put(Units.radiansToRotations(24.0), 0.1);
+```
+
+Full speed at home, half at mid-height, a tenth at full extension. It works, but it's
+preventive. It slows the robot down every time the elevator is up whether it's tipping or not,
+and it can't do anything once the robot actually starts to go over.
+
+So in the offseason I wrote something reactive to replace it. ```StabilityManager``` watches pitch and
+roll from the Pigeon. Under 3° of tilt it does nothing and the driver has full speed at any
+elevator height. Past 3°, it takes over the drivetrain and drives in the direction the robot is
+falling, the same thing you do to keep a broom balanced on your hand: move the base back
+under the center of mass.
+
+```java
+public ChassisSpeeds correction() {
+    Rotation2d tiltVec = Rotation2d.fromRadians(Math.atan2(-roll.getRadians(), -pitch.getRadians()));
+    double inclinationMagnitude = Math.hypot(pitch.getRadians(), roll.getRadians());
+    double output = kP.getAsDouble() * -inclinationMagnitude;
+    output = MathUtil.clamp(output, -maxCorrectionSpeedMPS.getAsDouble(), maxCorrectionSpeedMPS.getAsDouble());
+    Translation2d correction =
+        new Translation2d(0, 1).rotateBy(tiltVec).times(output);
+    return new ChassisSpeeds(correction.getX(), -correction.getY(), 0);
+}
+```
+
+The tilt direction comes from ```atan2``` of roll and pitch, the correction speed is proportional
+to how far over it is (kP = 5), and it's clamped at 3 m/s. It sits behind a toggle and lives on
+the ```anti-tip``` branch, which never got merged into the competition code, so on the field the
+speed limiter was still the thing keeping it upright.
+
+# scoring
+
+The robot kept its own map of the reef. ```ReefState``` holds a flag for every branch and level,
+mirrored into NetworkTables so the drive coach can mark what our partners scored, and the claw marks
+the robot's own coral the moment it leaves. From that map it picks the next target with one of
+three strategies the drivers chose on the dashboard: max points (highest open level, then
+closest), coral RP (fill whichever level is short of seven), or fastest (closest open branch).
+
+<ReefPlanner />
+
+(A port of those three strategies against the robot's real field geometry. Drag the robot around
+and watch the target move, or hit auto-run and watch each one fill the reef in a different order.)
+
+Holding the left bumper does the rest: pathfind to a staging pose 15" off the reef, final approach
+with a jerk-limited Autopilot profile to within 1", raise the elevator, shoot, come home. Letting go
+cancels it at any point. The score pose is offset sideways by the claw's 4.75" off-center mount,
+which is why the robot in the planner never centers on its branch. And if neither camera can see
+a reef tag before the shot, it backs off at 0.3 m/s until one does, then realigns, rather than
+trusting a pose that nothing has corrected in a while.
+
+# closing thoughts
+
+Everything on the [Rebuilt](/projects/frc-rebuilt-2026) page sits on what got built here. The
+2026 code has the same shape: IO layers under every subsystem, a simulated drivetrain, and the
+turret, hood, and swerve all on torque current. Chimera is the robot where the code stopped being
+"whatever makes the robot move" and became something we could actually test, measure, and replay.

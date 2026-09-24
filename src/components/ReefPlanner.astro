@@ -1,0 +1,824 @@
+---
+/**
+ * ReefPlanner
+ * -----------
+ * Interactive port of ReefState from Reefscape2025: a top-down blue-alliance
+ * reef, a draggable robot, and the three auto-score strategies the drivers
+ * could pick on the dashboard (max points / coral RP / fastest).
+ *
+ * Geometry is the robot's, not illustrative: face poses from
+ * FieldConstants.Position, branch offsets (CENTER_OF_TROUGH_TO_BRANCH), bumper
+ * length and the claw's -4.75" lateral offset from Constants, and the
+ * staging → score poses from ReefUtil.CoralBranch. The strategies are line-for-
+ * line ports, including iteration order (ties go to the first branch in
+ * REEF_NAMES, same as the robot).
+ *
+ * Left out on purpose: algae, alliance flipping, the Autopilot motion profile
+ * (the robot here just eases between poses), and the stall check that pushes
+ * the score pose in to 3.5".
+ */
+
+// REEF_NAMES order from ReefState — also the dashboard's column order
+const FACES = [
+  { code: "L", name: "left" },
+  { code: "TL", name: "top-left" },
+  { code: "TR", name: "top-right" },
+  { code: "R", name: "right" },
+  { code: "BR", name: "bottom-right" },
+  { code: "BL", name: "bottom-left" },
+];
+const LEVELS = ["L4", "L3", "L2"];
+---
+
+<figure class="reef" data-reef data-mode="MAX">
+  <div class="reef__top">
+    <div class="reef__stage">
+      <svg viewBox="0 0 480 572" role="img" aria-label="Top-down view of the blue alliance reef with the robot and its next scoring target">
+        <g class="reef__grid" data-grid aria-hidden="true"></g>
+        <g class="reef__field" data-field aria-hidden="true"></g>
+        <g class="reef__hex" data-hex aria-hidden="true"></g>
+        <path class="reef__path" data-path />
+        <g class="reef__ghost" data-ghost aria-hidden="true">
+          <rect class="reef__ghost-body" />
+          <rect class="reef__ghost-claw" />
+        </g>
+        <g class="reef__pips" data-pips></g>
+        <g class="reef__robot" data-robot tabindex="0" role="button"
+          aria-label="Robot. Drag, or use arrow keys, to move it around the field">
+          <rect class="reef__led reef__led--l" />
+          <rect class="reef__led reef__led--r" />
+          <rect class="reef__body" />
+          <rect class="reef__claw" />
+          <path class="reef__nose" />
+        </g>
+        <g class="reef__labels" data-labels aria-hidden="true"></g>
+      </svg>
+    </div>
+
+    <div class="reef__side">
+      <div class="reef__modes" role="radiogroup" aria-label="Auto-score strategy">
+        <button type="button" role="radio" data-set-mode="MAX" aria-checked="true">max points</button>
+        <button type="button" role="radio" data-set-mode="CORALRP" aria-checked="false">coral rp</button>
+        <button type="button" role="radio" data-set-mode="FASTEST" aria-checked="false">fastest</button>
+      </div>
+      <p class="reef__mode-note" data-mode-note></p>
+
+      <div class="reef__next">
+        <span class="reef__k">next goal</span>
+        <b class="reef__goal" data-goal>—</b>
+        <span class="reef__led-tag"><i data-led-swatch></i><span data-led-name>—</span> LEDs</span>
+        <span class="reef__k reef__k--sub">to branch <b data-dist>—</b></span>
+      </div>
+
+      <div class="reef__levels" data-levels>
+        {["L4", "L3", "L2", "L1"].map((l) => (
+          <div class="reef__lvl" data-lvl={l}>
+            <span class="reef__lvl-k">{l}</span>
+            <span class="reef__bar"><span class="reef__fill"></span><span class="reef__seven" title="7 needed for the coral RP"></span></span>
+            <b class="reef__lvl-n">0</b>
+          </div>
+        ))}
+      </div>
+
+      <div class="reef__rp">
+        <span data-rp>coral RP: 0 / 4 levels at 7</span>
+        <label class="reef__coop"><input type="checkbox" data-coop /> coop</label>
+      </div>
+
+      <div class="reef__actions">
+        <button type="button" class="reef__btn reef__btn--go" data-score>score next</button>
+        <button type="button" class="reef__btn" data-auto aria-pressed="false">auto-run</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="reef__board" role="group" aria-label="Reef dashboard: click a cell to mark that branch and level scored">
+    <span class="reef__board-title">ReefData</span>
+    <div class="reef__board-grid">
+      <span class="reef__corner"></span>
+      {FACES.map((f) => <span class="reef__face">{f.code}</span>)}
+      <span class="reef__corner"></span>
+      {FACES.map((f) => (
+        <span class="reef__branches"><span>1</span><span>2</span></span>
+      ))}
+      {LEVELS.map((lvl, li) => (
+        <>
+          <span class="reef__row-k">{lvl}</span>
+          {FACES.map((f) => (
+            <span class="reef__pair">
+              {[1, 2].map((n) => (
+                <button
+                  type="button"
+                  class="reef__cell"
+                  data-cell={`${f.code}${n}:${li}`}
+                  aria-pressed="false"
+                  aria-label={`${lvl} on the ${f.name} face, branch ${n}`}
+                ></button>
+              ))}
+            </span>
+          ))}
+        </>
+      ))}
+      <span class="reef__row-k">L1</span>
+      <span class="reef__trough">
+        <button type="button" class="reef__step" data-trough="-1" aria-label="Remove a coral from the trough">−</button>
+        <span>trough <b data-trough-n>0</b></span>
+        <button type="button" class="reef__step" data-trough="1" aria-label="Add a coral to the trough">+</button>
+      </span>
+    </div>
+  </div>
+
+  <div class="reef__foot">
+    <figcaption class="reef__hint">drag the robot · click cells to mark coral · the robot's LEDs show the level it's headed for</figcaption>
+    <button type="button" class="reef__reset" data-clear>clear reef</button>
+  </div>
+</figure>
+
+<style>
+  .reef {
+    --l4: var(--wire, hsl(268 60% 70%));
+    --l3: #ff72b6;
+    --l2: var(--blueprint, hsl(224 65% 72%));
+    --l1: var(--amber, #ffb454);
+    --goal: var(--l4);
+    margin: 2.2rem 0;
+    color: var(--ink-soft);
+  }
+  .reef[data-level="L3"] { --goal: var(--l3); }
+  .reef[data-level="L2"] { --goal: var(--l2); }
+  .reef[data-level="L1"] { --goal: var(--l1); }
+
+  .reef__top {
+    display: grid;
+    grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr);
+    gap: 1px;
+    background: var(--line-soft);
+    border: 1px solid var(--line-soft);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .reef__stage { background: var(--bg-inset); }
+  .reef svg { display: block; width: 100%; height: auto; touch-action: none; user-select: none; }
+
+  /* --- field furniture: drawn from JS, so these need :global() to escape scoping --- */
+  .reef__grid :global(line) { stroke: var(--line); stroke-width: 1; opacity: 0.45; }
+  .reef__field :global(.wall) { fill: none; stroke: var(--ink-faint); stroke-width: 1.5; opacity: 0.55; }
+  .reef__field :global(.station) { stroke: var(--l1); stroke-width: 4; stroke-linecap: round; opacity: 0.55; }
+  .reef__hex :global(.outer) { fill: color-mix(in srgb, var(--l2) 6%, transparent); stroke: var(--ink-faint); stroke-width: 1.5; }
+  .reef__hex :global(.inner) { fill: none; stroke: var(--line); stroke-width: 1; }
+  .reef__hex :global(.tag) { stroke: var(--ink-faint); stroke-width: 3; opacity: 0.8; }
+  .reef__labels :global(text) {
+    font-family: var(--font-mono, monospace);
+    font-size: 9.5px;
+    letter-spacing: 0.12em;
+    fill: var(--ink-faint);
+  }
+  .reef__labels :global(.face) { fill: var(--ink-soft); font-size: 10px; }
+
+  /* --- coral pips: hollow = open, filled = coral scored (white PVC) --- */
+  .reef__pips :global(.reef__pip) { fill: transparent; stroke: var(--ink-faint); stroke-width: 1.2; cursor: pointer; transition: fill 0.2s ease, stroke 0.2s ease; }
+  .reef__pips :global(.reef__pip.is-on) { fill: var(--ink); stroke: var(--ink); }
+  .reef__pips :global(.reef__pip.is-goal) { stroke: var(--goal); stroke-width: 2.2; animation: reef-pulse 1.2s ease-in-out infinite; }
+  .reef__pips :global(.reef__pip.is-flash) { fill: var(--goal); stroke: var(--goal); }
+  @keyframes reef-pulse { 50% { stroke-opacity: 0.35; } }
+
+  /* --- robot + where it's headed --- */
+  .reef__path { fill: none; stroke: var(--goal); stroke-width: 1.6; stroke-dasharray: 3 5; opacity: 0.85; }
+  .reef__ghost-body { fill: none; stroke: var(--goal); stroke-width: 1.2; stroke-dasharray: 4 4; opacity: 0.7; }
+  .reef__ghost-claw { fill: var(--goal); opacity: 0.55; }
+  .reef[data-busy] .reef__ghost { opacity: 0.35; }
+
+  .reef__robot { cursor: grab; outline: none; }
+  .reef[data-dragging] .reef__robot { cursor: grabbing; }
+  .reef__body { fill: #1b2030; stroke: var(--l2); stroke-width: 3; }
+  .reef__robot:focus-visible .reef__body { stroke: var(--amber); }
+  .reef__claw { fill: var(--ink-soft); }
+  .reef__nose { fill: none; stroke: var(--ink-faint); stroke-width: 1.5; stroke-linecap: round; }
+  .reef__led { fill: var(--goal); filter: drop-shadow(0 0 5px var(--goal)); transition: fill 0.25s ease; }
+  .reef[data-led-flash] .reef__led { fill: #fff; }
+
+  /* --- side panel --- */
+  .reef__side {
+    background: var(--bg-inset);
+    padding: 14px 14px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    font-family: var(--font-mono, monospace);
+  }
+  .reef__modes {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .reef__modes button {
+    appearance: none;
+    border: none;
+    background: none;
+    padding: 7px 4px;
+    font: inherit;
+    font-size: 10.5px;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+    color: var(--ink-soft);
+    cursor: pointer;
+    transition: color 0.15s ease, background-color 0.15s ease;
+  }
+  .reef__modes button + button { border-left: 1px solid var(--line); }
+  .reef__modes button:hover { color: var(--ink); }
+  .reef__modes button[aria-checked="true"] { color: var(--bg); background: var(--amber); }
+  .reef__mode-note { margin: -4px 0 0; font-size: 10.5px; line-height: 1.5; color: var(--ink-faint); min-height: 3em; }
+
+  .reef__k { font-size: 9.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-faint); }
+  .reef__k b { color: var(--ink-soft); font-weight: 500; letter-spacing: 0; text-transform: none; }
+  .reef__next { display: flex; flex-direction: column; gap: 4px; }
+  .reef__goal { font-size: 1.45rem; font-weight: 500; color: var(--goal); font-variant-numeric: tabular-nums; transition: color 0.25s ease; }
+  .reef__led-tag { font-size: 10.5px; color: var(--ink-faint); display: flex; align-items: center; gap: 6px; }
+  .reef__led-tag i { width: 9px; height: 9px; border-radius: 50%; background: var(--goal); box-shadow: 0 0 7px var(--goal); }
+
+  .reef__levels { display: flex; flex-direction: column; gap: 5px; }
+  .reef__lvl { display: grid; grid-template-columns: 22px 1fr 22px; align-items: center; gap: 8px; font-size: 11px; }
+  .reef__lvl-k { color: var(--ink-faint); }
+  .reef__lvl-n { text-align: right; color: var(--ink); font-weight: 500; font-variant-numeric: tabular-nums; }
+  .reef__bar { position: relative; height: 5px; border-radius: 3px; background: var(--line); }
+  .reef__fill { position: absolute; inset: 0 auto 0 0; width: 0; border-radius: 3px; transition: width 0.25s ease; }
+  .reef__lvl[data-lvl="L4"] .reef__fill { background: var(--l4); }
+  .reef__lvl[data-lvl="L3"] .reef__fill { background: var(--l3); }
+  .reef__lvl[data-lvl="L2"] .reef__fill { background: var(--l2); }
+  .reef__lvl[data-lvl="L1"] .reef__fill { background: var(--l1); }
+  /* 7 of a 12-wide bar — the RP threshold */
+  .reef__seven { position: absolute; left: calc(7 / 12 * 100%); top: -3px; bottom: -3px; width: 1px; background: var(--ink-soft); opacity: 0.6; }
+  .reef__lvl.is-met .reef__lvl-k { color: var(--phosphor, #7ee0a8); }
+
+  .reef__rp { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 10.5px; color: var(--ink-faint); }
+  .reef[data-rp] [data-rp] { color: var(--phosphor, #7ee0a8); }
+  .reef__coop { display: flex; align-items: center; gap: 5px; cursor: pointer; }
+  .reef__coop input { accent-color: var(--amber); margin: 0; }
+
+  .reef__actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: auto; }
+  .reef__btn {
+    appearance: none;
+    font: inherit;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    padding: 8px 6px;
+    border-radius: 7px;
+    border: 1px solid var(--line);
+    background: none;
+    color: var(--ink-soft);
+    cursor: pointer;
+    transition: color 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
+  }
+  .reef__btn:hover { color: var(--amber); border-color: var(--amber); }
+  .reef__btn--go { border-color: color-mix(in srgb, var(--amber) 60%, transparent); color: var(--amber); }
+  .reef__btn[aria-pressed="true"] { background: var(--amber); border-color: var(--amber); color: var(--bg); }
+  .reef__btn:disabled { opacity: 0.4; cursor: default; }
+  .reef__modes button:focus-visible, .reef__btn:focus-visible, .reef__cell:focus-visible, .reef__step:focus-visible, .reef__reset:focus-visible {
+    outline: 2px solid var(--amber); outline-offset: 2px;
+  }
+
+  /* --- the dashboard grid (what the drive coach actually clicked) --- */
+  .reef__board {
+    margin-top: 1px;
+    padding: 12px 14px;
+    border: 1px solid var(--line-soft);
+    border-radius: 10px;
+    background: var(--bg-inset);
+    font-family: var(--font-mono, monospace);
+  }
+  .reef__board-grid {
+    display: grid;
+    grid-template-columns: auto repeat(6, minmax(0, 1fr));
+    gap: 5px clamp(4px, 1.4vw, 8px);
+    align-items: center;
+  }
+  .reef__board-title { display: block; margin-bottom: 8px; font-size: 9.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-faint); }
+  .reef__corner { font-size: 9.5px; color: var(--ink-faint); letter-spacing: 0.08em; }
+  .reef__face { text-align: center; font-size: 11px; font-weight: 600; letter-spacing: 0.1em; color: var(--ink-soft); }
+  .reef__branches, .reef__pair { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; }
+  .reef__branches span { text-align: center; font-size: 9.5px; color: var(--ink-faint); }
+  .reef__row-k { font-size: 11px; color: var(--ink-faint); }
+  .reef__cell {
+    appearance: none;
+    height: 22px;
+    border-radius: 5px;
+    border: 1px solid var(--line);
+    background: none;
+    cursor: pointer;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+  }
+  .reef__cell:hover { border-color: var(--ink-faint); }
+  .reef__cell[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); }
+  .reef__cell.is-goal { border-color: var(--goal); box-shadow: 0 0 0 1px var(--goal), 0 0 10px color-mix(in srgb, var(--goal) 45%, transparent); }
+  .reef__trough { grid-column: 2 / -1; display: flex; align-items: center; gap: 10px; font-size: 11px; color: var(--ink-faint); }
+  .reef__trough b { color: var(--ink); font-weight: 500; }
+  .reef__trough.is-goal b { color: var(--l1); }
+  .reef__step {
+    appearance: none;
+    width: 24px; height: 22px;
+    border-radius: 5px;
+    border: 1px solid var(--line);
+    background: none;
+    color: var(--ink-soft);
+    font: inherit;
+    cursor: pointer;
+  }
+  .reef__step:hover { border-color: var(--amber); color: var(--amber); }
+
+  .reef__foot { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 11px; }
+  .reef__hint, .reef__reset { font-family: var(--font-mono, monospace); font-size: 11px; letter-spacing: 0.07em; color: var(--ink-faint); }
+  .reef__reset { background: none; border: 1px solid var(--line); border-radius: 6px; padding: 5px 11px; cursor: pointer; transition: color 0.16s ease, border-color 0.16s ease; }
+  .reef__reset:hover { color: var(--amber); border-color: var(--amber); }
+
+  @media (max-width: 700px) {
+    .reef__top { grid-template-columns: 1fr; }
+    .reef__mode-note { min-height: 0; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .reef__pips :global(.reef__pip.is-goal) { animation: none; }
+  }
+</style>
+
+<script>
+  type Pose = { x: number; y: number; t: number };
+  type Level = "L4" | "L3" | "L2" | "L1";
+  type Goal = { level: Level; branch: string };
+  type Mode = "MAX" | "CORALRP" | "FASTEST";
+
+  const IN = 0.0254;
+  // FieldConstants / Constants.RobotConstants
+  const TROUGH_TO_BRANCH = 6.5 * IN;
+  const ROBOT_LEN = (30 + 3.125 * 2) * IN;
+  const CLAW_Y = -4.75 * IN;
+  const REEF_C = { x: (144 + (93.5 - 14 * 2) / 2) * IN, y: 8.052 / 2 };
+  const FACE_R = 32.75 * IN; // center of reef to a face
+  // FieldConstants.Position — the blue reef tags (17–22) sit at these poses, facing out
+  const FACE_POSE: Record<string, Pose> = {
+    L: { x: 3.6576, y: 4.0259, t: Math.PI },
+    TL: { x: 4.073906, y: 4.745481, t: (2 * Math.PI) / 3 },
+    TR: { x: 4.904739, y: 4.745481, t: Math.PI / 3 },
+    R: { x: 5.321046, y: 4.0259, t: 0 },
+    BR: { x: 4.904739, y: 3.306318, t: -Math.PI / 3 },
+    BL: { x: 4.073906, y: 3.306318, t: (-2 * Math.PI) / 3 },
+  };
+  const STATIONS: Pose[] = [
+    { x: 1.007676, y: 6.9648, t: -0.94 + Math.PI }, // CORAL_STATION_TOP
+    { x: 1.007676, y: 1.0, t: 0.94 + Math.PI }, // CORAL_STATION_BOTTOM
+  ];
+  // ReefState.REEF_NAMES order, as branch codes
+  const REEF_NAMES = ["L1", "L2", "TL1", "TL2", "TR1", "TR2", "R1", "R2", "BR1", "BR2", "BL1", "BL2"];
+  // CoralBranch.values() order — getClosestCoralBranch() iterates this one instead
+  const ENUM_ORDER = ["TR1", "TR2", "R1", "R2", "BR1", "BR2", "BL1", "BL2", "L1", "L2", "TL1", "TL2"];
+  const IDX_LEVEL: Level[] = ["L4", "L3", "L2"]; // coralMap index 0 → L4, 1 → L3, 2 → L2
+  const LED_NAME: Record<Level, string> = { L4: "purple", L3: "hot pink", L2: "blue", L1: "orange" };
+  const MODE_NOTE: Record<Mode, string> = {
+    MAX: "highest open level first (L4 → L3 → L2), then the closest branch at that level.",
+    CORALRP: "fill whichever level is short of 7, closest branch first. once L4–L2 all have 7, back to max points.",
+    FASTEST: "closest open branch, whatever level. ties go to the higher level.",
+  };
+
+  // field (m) → svg: 80 units per metre, y flipped. Cropped to the blue side up
+  // to just past the reef, trimming the field corners behind the coral stations
+  // (the stations' own poses stay in view). Must match the viewBox: 6.0 × 7.15 m.
+  const S = 80, FIELD_W = 8.052;
+  const VIEW_X = 6.0, VIEW_Y0 = 0.45, VIEW_Y1 = 7.6;
+  const sx = (x: number) => x * S;
+  const sy = (y: number) => (VIEW_Y1 - y) * S;
+
+  const faceOf = (b: string) => b.replace(/\d$/, "");
+  const isLeft = (b: string) => b.endsWith("1");
+  const dist = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.hypot(a.x - b.x, a.y - b.y);
+
+  /** Pose2d.transformBy */
+  function tf(p: Pose, dx: number, dy: number, dt = 0): Pose {
+    const c = Math.cos(p.t), s = Math.sin(p.t);
+    return { x: p.x + dx * c - dy * s, y: p.y + dx * s + dy * c, t: p.t + dt };
+  }
+  /** CoralBranch.getBranchPoseProjectedToReefFace() */
+  const branchPose = (b: string) => tf(FACE_POSE[faceOf(b)], 0, TROUGH_TO_BRANCH * (isLeft(b) ? -1 : 1));
+  /** CoralBranch.getScorePose(level, distFromReef) */
+  function scorePose(b: string, level: Level, fromReef?: number): Pose {
+    const d = fromReef ?? (level === "L4" ? 0.25 : 0.5) * IN;
+    const y = level === "L1" ? CLAW_Y : TROUGH_TO_BRANCH * (isLeft(b) ? -1 : 1) + CLAW_Y;
+    return tf(FACE_POSE[faceOf(b)], ROBOT_LEN / 2 + d, y, Math.PI);
+  }
+  const stagingPose = (b: string, level: Level) => scorePose(b, level, 15 * IN);
+
+  function initReef(root: HTMLElement): () => void {
+    const q = <T extends Element>(sel: string) => root.querySelector<T>(sel)!;
+    const NS = "http://www.w3.org/2000/svg";
+    const svg = q<SVGSVGElement>("svg");
+    const mk = (tag: string, attrs: Record<string, string | number>, parent: Element, cls?: string) => {
+      const el = document.createElementNS(NS, tag);
+      for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, String(v));
+      if (cls) el.setAttribute("class", cls);
+      parent.appendChild(el);
+      return el;
+    };
+
+    // ---------- state ----------
+    const coral: Record<string, boolean[]> = {};
+    REEF_NAMES.forEach((b) => (coral[b] = [false, false, false]));
+    let trough = 0;
+    let coop = false;
+    let mode: Mode = "MAX";
+    let robot: Pose = { x: 1.9, y: 1.7, t: 0 };
+    let lockedGoal: Goal | null = null; // held while driving, like Commands.defer
+    let anim = 0;
+    let auto = false;
+    let timers: number[] = [];
+
+    // ---------- ReefState, ported ----------
+    const countFor = (lvl: number) => (lvl === 1 ? trough : REEF_NAMES.filter((b) => coral[b][4 - lvl]).length);
+    const achievedLevelMinimum = (lvl: number) => countFor(lvl) >= 7;
+
+    function closestBranch(): string {
+      let best = "TR1", bestD = Infinity;
+      for (const b of ENUM_ORDER) {
+        const d = dist(robot, branchPose(b));
+        if (d < bestD) { bestD = d; best = b; }
+      }
+      return best;
+    }
+
+    function nextBestScorePosition(): Goal {
+      let best: Goal | null = null, bestPrio = Infinity, bestD = Infinity;
+      for (const b of REEF_NAMES) {
+        coral[b].forEach((scored, idx) => {
+          if (scored) return;
+          const d = dist(robot, branchPose(b));
+          if (idx < bestPrio || (idx === bestPrio && d < bestD)) {
+            bestPrio = idx; bestD = d; best = { level: IDX_LEVEL[idx], branch: b };
+          }
+        });
+      }
+      return best ?? { level: "L1", branch: closestBranch() };
+    }
+
+    function nextForCoralRP(): Goal {
+      let consecutiveFull = 0, targetLevel = 1;
+      for (let lvl = 4; lvl >= 1; lvl--) {
+        if (achievedLevelMinimum(lvl)) {
+          if (++consecutiveFull === 3) return nextBestScorePosition();
+        } else { targetLevel = lvl; break; }
+      }
+      const idxWanted = 4 - targetLevel;
+      let best: Goal | null = null, bestD = Infinity;
+      for (const b of REEF_NAMES) {
+        if (idxWanted < 0 || idxWanted >= 3 || coral[b][idxWanted]) continue;
+        const d = dist(robot, branchPose(b));
+        if (d < bestD) { bestD = d; best = { level: `L${targetLevel}` as Level, branch: b }; }
+      }
+      return best ?? nextBestScorePosition();
+    }
+
+    function quickestScoring(): Goal {
+      let best: Goal | null = null, bestD = Infinity, bestPrio = Infinity;
+      for (const b of REEF_NAMES) {
+        coral[b].forEach((scored, idx) => {
+          if (scored) return;
+          const d = dist(robot, branchPose(b));
+          if (d < bestD || (d === bestD && idx < bestPrio)) {
+            bestD = d; bestPrio = idx; best = { level: IDX_LEVEL[idx], branch: b };
+          }
+        });
+      }
+      return best ?? { level: "L1", branch: closestBranch() };
+    }
+
+    const dynamicScoreRoutine = (): Goal =>
+      mode === "CORALRP" ? nextForCoralRP() : mode === "FASTEST" ? quickestScoring() : nextBestScorePosition();
+
+    // ---------- static drawing ----------
+    const gGrid = q<SVGGElement>("[data-grid]");
+    const gField = q<SVGGElement>("[data-field]");
+    const gHex = q<SVGGElement>("[data-hex]");
+    const gPips = q<SVGGElement>("[data-pips]");
+    const gLabels = q<SVGGElement>("[data-labels]");
+    [gGrid, gField, gHex, gPips, gLabels].forEach((g) => (g.innerHTML = "")); // re-init safe
+
+    for (let m = 1; m < VIEW_X; m++) mk("line", { x1: sx(m), y1: 0, x2: sx(m), y2: sy(VIEW_Y0) }, gGrid);
+    for (let m = 1; m < VIEW_Y1; m++) mk("line", { x1: 0, y1: sy(m), x2: sx(VIEW_X), y2: sy(m) }, gGrid);
+    // alliance wall + the two coral stations (FieldConstants.CoralStation endpoints)
+    mk("line", { x1: 1.5, y1: 0, x2: 1.5, y2: sy(VIEW_Y0) }, gField, "wall");
+    const st = 109.13 * IN, stX = 65.84 * IN;
+    mk("line", { x1: sx(0), y1: sy(FIELD_W / 2 + st), x2: sx(stX), y2: sy(FIELD_W) }, gField, "station");
+    mk("line", { x1: sx(0), y1: sy(FIELD_W / 2 - st), x2: sx(stX), y2: sy(0) }, gField, "station");
+    mk("text", { x: 10, y: sy(FIELD_W / 2 + st) + 26 }, gLabels).textContent = "CORAL STATION";
+    mk("text", { x: 10, y: sy(FIELD_W / 2 - st) - 18 }, gLabels).textContent = "CORAL STATION";
+    mk("text", { x: 10, y: sy(FIELD_W / 2) + 4 }, gLabels).textContent = "BLUE WALL";
+
+    // reef hexagon: corners sit at 30° off each face normal
+    const hex = (r: number) =>
+      Array.from({ length: 6 }, (_, i) => {
+        const a = Math.PI / 6 + (i * Math.PI) / 3;
+        return `${sx(REEF_C.x + r * Math.cos(a))},${sy(REEF_C.y + r * Math.sin(a))}`;
+      }).join(" ");
+    mk("polygon", { points: hex(FACE_R / Math.cos(Math.PI / 6)) }, gHex, "outer");
+    mk("polygon", { points: hex(0.2) }, gHex, "inner");
+
+    // AprilTag ticks + face labels
+    for (const [code, p] of Object.entries(FACE_POSE)) {
+      const a = tf(p, 0, -0.085), b = tf(p, 0, 0.085);
+      mk("line", { x1: sx(a.x), y1: sy(a.y), x2: sx(b.x), y2: sy(b.y) }, gHex, "tag");
+      const lp = tf(p, -0.15, 0);
+      const t = mk("text", { x: sx(lp.x), y: sy(lp.y) + 3.5, "text-anchor": "middle" }, gLabels, "face");
+      t.textContent = code;
+    }
+
+    // Level pips on each branch. The branches lean back toward the reef's
+    // centre as they climb, so from above L4 sits deepest: L2 by the face,
+    // L3 in the middle, L4 innermost.
+    const pipEls: Record<string, SVGCircleElement> = {};
+    for (const b of REEF_NAMES) {
+      const bp = branchPose(b);
+      IDX_LEVEL.forEach((lvl, idx) => {
+        const depth = 0.1 + (2 - idx) * 0.105; // idx 2 (L2) shallowest
+        const p = tf(bp, -depth, 0);
+        const c = mk("circle", { cx: sx(p.x), cy: sy(p.y), r: 4.6 }, gPips, "reef__pip") as SVGCircleElement;
+        c.dataset.cell = `${b}:${idx}`;
+        mk("title", {}, c).textContent = `${lvl} · ${b}`;
+        pipEls[`${b}:${idx}`] = c;
+      });
+    }
+
+    // robot parts, drawn in the robot's own frame (+x forward, svg y = -field y)
+    const L = ROBOT_LEN * S, half = L / 2;
+    const setRect = (el: Element, x: number, y: number, w: number, h: number, rx = 0) => {
+      el.setAttribute("x", String(x)); el.setAttribute("y", String(y));
+      el.setAttribute("width", String(w)); el.setAttribute("height", String(h));
+      if (rx) el.setAttribute("rx", String(rx));
+    };
+    const robotG = q<SVGGElement>("[data-robot]");
+    setRect(q(".reef__body"), -half, -half, L, L, 7);
+    setRect(q(".reef__led--l"), -half * 0.7, -half - 5, L * 0.7, 3.2, 1.5);
+    setRect(q(".reef__led--r"), -half * 0.7, half + 1.8, L * 0.7, 3.2, 1.5);
+    // claw: at the front edge, CLAW_Y to the robot's right (field -y → svg +y)
+    setRect(q(".reef__claw"), half - 13, -CLAW_Y * S - 6, 11, 12, 2);
+    q(".reef__nose").setAttribute("d", `M${half - 26} ${-half + 12} L${half - 18} 0 L${half - 26} ${half - 12}`);
+    const ghostG = q<SVGGElement>("[data-ghost]");
+    setRect(q(".reef__ghost-body"), -half, -half, L, L, 7);
+    setRect(q(".reef__ghost-claw"), half - 13, -CLAW_Y * S - 6, 11, 12, 2);
+    const pathEl = q<SVGPathElement>("[data-path]");
+
+    // ---------- panel refs ----------
+    const cells = new Map<string, HTMLButtonElement>();
+    root.querySelectorAll<HTMLButtonElement>("[data-cell]").forEach((c) => cells.set(c.dataset.cell!, c));
+    const elGoal = q<HTMLElement>("[data-goal]");
+    const elLed = q<HTMLElement>("[data-led-name]");
+    const elDist = q<HTMLElement>("[data-dist]");
+    const elNote = q<HTMLElement>("[data-mode-note]");
+    const elRp = q<HTMLElement>("[data-rp]");
+    const elTroughN = q<HTMLElement>("[data-trough-n]");
+    const elTrough = q<HTMLElement>(".reef__trough");
+    const btnScore = q<HTMLButtonElement>("[data-score]");
+    const btnAuto = q<HTMLButtonElement>("[data-auto]");
+    const coopBox = q<HTMLInputElement>("[data-coop]");
+    const modeBtns = Array.from(root.querySelectorAll<HTMLButtonElement>("[data-set-mode]"));
+
+    const poseTf = (p: Pose) => `translate(${sx(p.x).toFixed(1)} ${sy(p.y).toFixed(1)}) rotate(${((-p.t * 180) / Math.PI).toFixed(2)})`;
+    const reefFull = () => REEF_NAMES.every((b) => coral[b].every(Boolean));
+
+    function render() {
+      const goal = lockedGoal ?? dynamicScoreRoutine();
+      root.dataset.level = goal.level;
+      robotG.setAttribute("transform", poseTf(robot));
+
+      const target = scorePose(goal.branch, goal.level);
+      const stage = stagingPose(goal.branch, goal.level);
+      ghostG.setAttribute("transform", poseTf(target));
+      pathEl.setAttribute("d", `M${sx(robot.x)} ${sy(robot.y)} L${sx(stage.x)} ${sy(stage.y)} L${sx(target.x)} ${sy(target.y)}`);
+
+      const goalKey = goal.level === "L1" ? "" : `${goal.branch}:${IDX_LEVEL.indexOf(goal.level)}`;
+      for (const b of REEF_NAMES) {
+        coral[b].forEach((on, idx) => {
+          const k = `${b}:${idx}`;
+          pipEls[k].classList.toggle("is-on", on);
+          pipEls[k].classList.toggle("is-goal", k === goalKey);
+          const cell = cells.get(k)!;
+          cell.setAttribute("aria-pressed", String(on));
+          cell.classList.toggle("is-goal", k === goalKey);
+        });
+      }
+      elTrough.classList.toggle("is-goal", goal.level === "L1");
+      elTroughN.textContent = String(trough);
+
+      elGoal.textContent = goal.level === "L1" ? "L1 · trough" : `${goal.level} · ${goal.branch}`;
+      elLed.textContent = LED_NAME[goal.level];
+      elDist.textContent = `${dist(robot, branchPose(goal.branch)).toFixed(2)} m`;
+
+      let met = 0;
+      root.querySelectorAll<HTMLElement>("[data-lvl]").forEach((row) => {
+        const lvl = Number(row.dataset.lvl!.slice(1));
+        const n = countFor(lvl);
+        row.querySelector<HTMLElement>(".reef__fill")!.style.width = `${(Math.min(n, 12) / 12) * 100}%`;
+        row.querySelector(".reef__lvl-n")!.textContent = String(n);
+        row.classList.toggle("is-met", n >= 7);
+        if (n >= 7) met++;
+      });
+      // the game rule: 7 on all four levels, or on three with coopertition
+      const need = coop ? 3 : 4;
+      root.toggleAttribute("data-rp", met >= need);
+      elRp.textContent = met >= need ? "coral RP earned ✓" : `coral RP: ${met} / ${need} levels at 7`;
+
+      btnScore.disabled = !!anim;
+    }
+
+    // ---------- driving ----------
+    const ease = (u: number) => (u < 0.5 ? 2 * u * u : 1 - (-2 * u + 2) ** 2 / 2);
+    const angDiff = (a: number, b: number) => Math.atan2(Math.sin(b - a), Math.cos(b - a));
+    const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const SPEED = 4.2; // m/s on screen — quicker than the real thing so auto-run doesn't drag
+
+    function drive(points: Pose[], done: () => void) {
+      cancelAnimationFrame(anim);
+      root.setAttribute("data-busy", "");
+      const legs = points.map((p, i) => {
+        const from = i === 0 ? { ...robot } : points[i - 1];
+        return { from, to: p, dur: reduced ? 0 : Math.max(180, (dist(from, p) / SPEED) * 1000) };
+      });
+      let leg = 0, start = performance.now();
+      const step = (now: number) => {
+        const { from, to, dur } = legs[leg];
+        const u = dur ? Math.min(1, (now - start) / dur) : 1;
+        const e = ease(u);
+        robot = { x: from.x + (to.x - from.x) * e, y: from.y + (to.y - from.y) * e, t: from.t + angDiff(from.t, to.t) * e };
+        render();
+        if (u < 1) { anim = requestAnimationFrame(step); return; }
+        if (++leg < legs.length) { start = now; anim = requestAnimationFrame(step); return; }
+        anim = 0;
+        root.removeAttribute("data-busy");
+        done();
+      };
+      anim = requestAnimationFrame(step);
+      render();
+    }
+
+    const later = (fn: () => void, ms: number) => { timers.push(window.setTimeout(fn, reduced ? 0 : ms)); };
+
+    function scoreNext(then?: () => void) {
+      if (anim) return;
+      const goal = dynamicScoreRoutine();
+      lockedGoal = goal;
+      // Align.alignWithSetpoint: pathfind to the staging pose, then the final approach
+      drive([stagingPose(goal.branch, goal.level), scorePose(goal.branch, goal.level)], () => {
+        // Claw.shootCoral auto-marks the branch it's closest to
+        if (goal.level === "L1") trough++;
+        else coral[goal.branch][IDX_LEVEL.indexOf(goal.level)] = true;
+        const pip = goal.level === "L1" ? null : pipEls[`${goal.branch}:${IDX_LEVEL.indexOf(goal.level)}`];
+        pip?.classList.add("is-flash");
+        root.setAttribute("data-led-flash", "");
+        later(() => { pip?.classList.remove("is-flash"); root.removeAttribute("data-led-flash"); }, 260);
+        lockedGoal = null;
+        render();
+        then?.();
+      });
+    }
+
+    function autoStep() {
+      if (!auto) return;
+      if (reefFull()) return setAuto(false);
+      const station = STATIONS.reduce((a, b) => (dist(robot, a) < dist(robot, b) ? a : b));
+      lockedGoal = null;
+      drive([tf(station, -0.6, 0), station], () =>
+        later(() => { if (auto) scoreNext(() => later(autoStep, 220)); }, 250));
+    }
+
+    function setAuto(on: boolean) {
+      auto = on;
+      btnAuto.setAttribute("aria-pressed", String(on));
+      btnAuto.textContent = on ? "stop" : "auto-run";
+      if (on) (reefFull() ? setAuto(false) : scoreNext(() => later(autoStep, 220)));
+      else stopMotion();
+    }
+
+    function stopMotion() {
+      cancelAnimationFrame(anim);
+      anim = 0;
+      timers.forEach(clearTimeout);
+      timers = [];
+      lockedGoal = null;
+      root.removeAttribute("data-busy");
+      root.removeAttribute("data-led-flash");
+      render();
+    }
+
+    // ---------- dragging the robot ----------
+    const pt = svg.createSVGPoint();
+    const keepOnField = (x: number, y: number): Pose => {
+      const m = ROBOT_LEN / 2 + 0.02;
+      x = Math.min(VIEW_X - m, Math.max(0.19 + m, x));
+      y = Math.min(VIEW_Y1 - m, Math.max(VIEW_Y0 + m, y));
+      // bumpers can't be inside the reef
+      const minR = FACE_R / Math.cos(Math.PI / 6) + ROBOT_LEN / 2 * 0.9;
+      const dx = x - REEF_C.x, dy = y - REEF_C.y, r = Math.hypot(dx, dy);
+      if (r < minR) { x = REEF_C.x + (dx / (r || 1)) * minR; y = REEF_C.y + (dy / (r || 1)) * minR; }
+      // face the reef, the way the drivers approached it
+      return { x, y, t: Math.atan2(REEF_C.y - y, REEF_C.x - x) };
+    };
+    let grab = { x: 0, y: 0 };
+    const toField = (e: PointerEvent) => {
+      const ctm = svg.getScreenCTM();
+      if (!ctm) return null;
+      pt.x = e.clientX; pt.y = e.clientY;
+      const p = pt.matrixTransform(ctm.inverse());
+      return { x: p.x / S, y: VIEW_Y1 - p.y / S };
+    };
+    const onDown = (e: PointerEvent) => {
+      const p = toField(e);
+      if (!p) return;
+      e.preventDefault();
+      if (auto) setAuto(false); else stopMotion();
+      grab = { x: p.x - robot.x, y: p.y - robot.y };
+      root.setAttribute("data-dragging", "");
+      svg.setPointerCapture(e.pointerId);
+    };
+    const onMove = (e: PointerEvent) => {
+      if (!root.hasAttribute("data-dragging")) return;
+      const p = toField(e);
+      if (!p) return;
+      robot = keepOnField(p.x - grab.x, p.y - grab.y);
+      render();
+    };
+    const onUp = (e: PointerEvent) => {
+      root.removeAttribute("data-dragging");
+      if (svg.hasPointerCapture(e.pointerId)) svg.releasePointerCapture(e.pointerId);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      const s = e.shiftKey ? 0.4 : 0.12;
+      const d: Record<string, [number, number]> = { ArrowRight: [s, 0], ArrowLeft: [-s, 0], ArrowUp: [0, s], ArrowDown: [0, -s] };
+      if (!d[e.key]) return;
+      e.preventDefault();
+      if (auto) setAuto(false); else stopMotion();
+      robot = keepOnField(robot.x + d[e.key][0], robot.y + d[e.key][1]);
+      render();
+    };
+    robotG.addEventListener("pointerdown", onDown);
+    svg.addEventListener("pointermove", onMove);
+    svg.addEventListener("pointerup", onUp);
+    svg.addEventListener("pointercancel", onUp);
+    robotG.addEventListener("keydown", onKey);
+
+    // ---------- panel wiring ----------
+    const toggleCell = (key: string) => {
+      const [b, i] = key.split(":");
+      coral[b][Number(i)] = !coral[b][Number(i)];
+      render();
+    };
+    const onClick = (e: Event) => {
+      const t = (e.target as Element).closest<HTMLElement | SVGElement>("[data-cell],[data-set-mode],[data-trough],[data-score],[data-auto],[data-clear]");
+      if (!t || !root.contains(t)) return;
+      const d = (t as HTMLElement).dataset;
+      if (d.cell) toggleCell(d.cell);
+      else if (d.setMode) {
+        mode = d.setMode as Mode;
+        root.dataset.mode = mode;
+        modeBtns.forEach((b) => b.setAttribute("aria-checked", String(b === t)));
+        elNote.textContent = MODE_NOTE[mode];
+        render();
+      } else if (d.trough) { trough = Math.max(0, trough + Number(d.trough)); render(); }
+      else if ("score" in d) scoreNext();
+      else if ("auto" in d) setAuto(!auto);
+      else if ("clear" in d) {
+        if (auto) setAuto(false); else stopMotion();
+        REEF_NAMES.forEach((b) => (coral[b] = [false, false, false]));
+        trough = 0;
+        render();
+      }
+    };
+    const onCoop = () => { coop = coopBox.checked; render(); };
+    root.addEventListener("click", onClick);
+    coopBox.addEventListener("change", onCoop);
+
+    elNote.textContent = MODE_NOTE[mode];
+    robot = keepOnField(robot.x, robot.y);
+    render();
+
+    // don't burn frames on a tab nobody's looking at
+    const onHide = () => { if (document.hidden && auto) setAuto(false); };
+    document.addEventListener("visibilitychange", onHide);
+
+    return () => {
+      auto = false;
+      stopMotion();
+      root.removeEventListener("click", onClick);
+      coopBox.removeEventListener("change", onCoop);
+      robotG.removeEventListener("pointerdown", onDown);
+      svg.removeEventListener("pointermove", onMove);
+      svg.removeEventListener("pointerup", onUp);
+      svg.removeEventListener("pointercancel", onUp);
+      robotG.removeEventListener("keydown", onKey);
+      document.removeEventListener("visibilitychange", onHide);
+    };
+  }
+
+  // astro:page-load fires on first load and every view-transition navigation
+  let cleanups: Array<() => void> = [];
+  document.addEventListener("astro:page-load", () => {
+    cleanups.forEach((fn) => fn());
+    cleanups = [];
+    document.querySelectorAll<HTMLElement>("[data-reef]").forEach((el) => cleanups.push(initReef(el)));
+  });
+</script>
