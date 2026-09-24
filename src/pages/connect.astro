@@ -1,139 +1,191 @@
 ---
+/**
+ * Connect: the page is a looping highlight reel, crossfading full-screen
+ * behind the contact links like a film's end card.
+ *
+ * The reel is everything in public/contact — drop photos or clips in there and
+ * they join it (see discoverReel). It's shuffled on every visit, and with ~60
+ * items nothing is fetched until a slide is up next: each slide's src/srcset
+ * sits in data-* attributes until then, so a visit only loads what it shows.
+ * The links live in src/lib/channels.ts.
+ */
 import Base from "../layouts/Base.astro";
 import SiteHeader from "../components/SiteHeader.astro";
-import { withBase } from "../lib/url";
+import { channels } from "../lib/channels";
+import { discoverReel } from "../lib/images.mjs";
+import { imageAttrs, withBase } from "../lib/url";
 
-// edit these — placeholder handles
-const channels = [
-  // {
-  //   label: "Email",
-  //   value: "hello@farhanj2.dev",
-  //   href: "mailto:hello@farhanj2.dev",
-  //   ext: false,
-  //   note: "The fastest way to reach me.",
-  // },
-  {
-    label: "GitHub",
-    value: "@farhanj2",
-    href: "https://github.com/farhanj2",
-    ext: true,
-    note: "Code, projects, and the source for this site.",
-  },
-  {
-    label: "LinkedIn",
-    value: "Farhan Jamil",
-    href: "https://www.linkedin.com/in/farhan-jamil-373370230/",
-    ext: true,
-    note: "The professional-ish version.",
-  },
-];
+/**
+ * Clips to favour, by filename prefix (so "IMG_7015" covers IMG_7015-1 and -2).
+ * They're likelier to open the reel and tend to come up early, but it's a
+ * weighting, not a fixed order — see the shuffle below.
+ */
+const FAVOURED = ["C0294", "IMG_7015"];
+const favoured = (src: string) => FAVOURED.some((f) => src.split("/").pop()!.startsWith(f));
+
+const slides = await Promise.all(
+  discoverReel("/contact").map(async (s) => ({
+    ...s,
+    img: s.type === "image" ? await imageAttrs(s.src, "100vw") : undefined,
+    posterSrc: s.poster ? (await imageAttrs(s.poster, "100vw")).src : undefined,
+  })),
+);
 ---
 
-<Base title="Connect — Farhan Jamil" description="Get in touch with Farhan Jamil.">
+<Base title="Connect — Farhan Jamil" description="Get in touch with Farhan Jamil." scribbles={false}>
   <SiteHeader current="connect" />
 
-  <main class="container wrap">
-    <section class="intro">
-      <p class="hand eyebrow">reach out —</p>
-      <h1>connect<span class="dot">.</span></h1>
-      <p class="lead frost">
-        Questions about a build, robotics, RPI, or just want to say hi? Any of these
-        reaches me — I read everything.
-      </p>
-    </section>
+  <div class="reel" aria-hidden="true">
+    {slides.map((s) => (
+      <div class="reel__slide" data-favoured={favoured(s.src) ? "" : undefined}>
+        {s.type === "video"
+          ? <video data-src={withBase(s.src)} data-poster={s.posterSrc} muted playsinline preload="none"></video>
+          : <img data-src={s.img!.src} data-srcset={s.img!.srcset} sizes="100vw" alt="" decoding="async" />}
+      </div>
+    ))}
+  </div>
 
-    <ul class="channels">
-      {channels.map((c) => (
-        <li>
-          <a
-            class="channel"
-            href={c.href}
-            target={c.ext ? "_blank" : undefined}
-            rel={c.ext ? "noopener" : undefined}
-          >
-            <span class="channel__label mono">{c.label}</span>
-            <span class="channel__value">{c.value}</span>
-            <span class="channel__note">{c.note}</span>
-            <span class="channel__arrow" aria-hidden="true">{c.ext ? "↗" : "→"}</span>
+  <main class="container fg">
+    <section class="sg">
+      <img class="sg__sig" src={withBase("/signature-dark.svg")} alt="Farhan Jamil" width="760" height="147" />
+      <p class="sg__hand hand">let's talk —</p>
+      <nav class="sg__links" aria-label="Find me">
+        {channels.map((c) => (
+          <a href={c.href} target={c.ext ? "_blank" : undefined} rel={c.ext ? "noopener" : undefined}>
+            <span class="mono">{c.label}</span> {c.value} <span aria-hidden="true" class="sg__arrow">{c.ext ? "↗" : "→"}</span>
           </a>
-        </li>
-      ))}
-    </ul>
-
-    <p class="sign hand">— based in Queens, NY · soon Troy, NY</p>
+        ))}
+      </nav>
+    </section>
   </main>
-
-  <footer class="container foot">
-    <a href={withBase("/")} class="mono">← back home</a>
-    <span class="mono">breadboard — built in the open</span>
-  </footer>
 </Base>
 
 <style>
-  .wrap { max-width: 720px; padding-top: 40px; padding-bottom: 100px; }
+  .reel { position: fixed; inset: 0; z-index: 0; background: #000; }
+  .reel__slide {
+    position: absolute; inset: 0;
+    opacity: 0;
+    transition: opacity 1.4s ease;
+  }
+  .reel__slide.is-on { opacity: 1; }
+  .reel__slide video, .reel__slide img {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    object-fit: cover;
+  }
+  /* slow push-in while a slide is up */
+  .reel__slide.is-on video, .reel__slide.is-on img { animation: reel-push 9s ease-out both; }
+  @keyframes reel-push { from { transform: scale(1.1); } to { transform: scale(1); } }
 
-  .intro { padding: clamp(30px, 6vw, 60px) 0 clamp(20px, 3vw, 32px); max-width: 44ch; }
-  .eyebrow { font-size: 1.4rem; margin: 0 0 4px; }
-  .intro h1 {
-    margin: 0 0 14px;
-    font-size: clamp(2.8rem, 8vw, 5rem);
-    font-weight: 600;
-    letter-spacing: -0.03em;
-    line-height: 0.95;
-  }
-  .intro h1 .dot { color: var(--amber); }
-  .lead { margin: 0; color: var(--ink-soft); font-size: 1.12rem; line-height: 1.6; }
+  .fg { position: relative; z-index: 1; min-height: calc(100svh - 64px); max-width: 1180px; }
 
-  .channels { list-style: none; margin: 8px 0 0; padding: 0; }
-  .channel {
-    position: relative;
-    display: block;
-    padding: 22px 46px 22px 0;
-    border-top: 1px dashed var(--line);
-    color: inherit;
-    text-decoration: none;
+  .sg {
+    min-height: inherit;
+    display: flex;
+    flex-direction: column; align-items: flex-start; justify-content: center;
+    padding: 40px 0 80px;
   }
-  .channels li:last-child .channel { border-bottom: 1px dashed var(--line); }
-  .channel__label {
-    display: block;
-    font-size: 11px;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--ink-faint);
-    margin-bottom: 6px;
+  /* no scrim over the footage: the shadows hug the letters instead */
+  .sg__sig { width: min(760px, 88vw); height: auto; filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.55)) drop-shadow(0 6px 22px rgba(0, 0, 0, 0.45)); }
+  .sg__hand { margin: 18px 0 22px 6px; font-size: 1.8rem; color: var(--amber); text-shadow: 0 0 2px rgba(0, 0, 0, 0.9), 0 1px 4px rgba(0, 0, 0, 0.8), 0 4px 18px rgba(0, 0, 0, 0.6); }
+  .sg__links { display: flex; flex-wrap: wrap; gap: 12px; }
+  .sg__links a {
+    display: inline-flex; align-items: baseline; gap: 10px;
+    padding: 11px 18px;
+    border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 999px;
+    background: rgba(12, 14, 20, 0.55);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    font-family: var(--font-display); font-size: 1.15rem;
+    color: #fff; text-decoration: none;
+    transition: border-color 0.2s ease, color 0.2s ease;
   }
-  .channel__value {
-    display: block;
-    font-family: var(--font-display);
-    font-size: clamp(1.5rem, 3.5vw, 2rem);
-    font-weight: 500;
-    letter-spacing: -0.01em;
-    color: var(--ink);
-    transition: color 0.15s ease;
-  }
-  .channel__note { display: block; margin-top: 6px; color: var(--ink-soft); font-size: 0.95rem; }
-  .channel__arrow {
-    position: absolute;
-    right: 4px;
-    top: 50%;
-    transform: translateY(-50%);
-    font-family: var(--font-mono);
-    font-size: 1.2rem;
-    color: var(--ink-faint);
-    transition: color 0.15s ease, transform 0.15s ease;
-  }
-  .channel:hover .channel__value { color: var(--amber); }
-  .channel:hover .channel__arrow { color: var(--amber); transform: translateY(-50%) translateX(3px); }
-  .channel:focus-visible { outline: 2px solid var(--amber); outline-offset: 4px; border-radius: 6px; }
+  .sg__links a .mono { font-size: 10.5px; letter-spacing: 0.16em; text-transform: uppercase; color: rgba(255, 255, 255, 0.55); }
+  .sg__links a:hover { border-color: var(--amber); color: var(--amber); text-decoration: none; }
+  .sg__arrow { font-family: var(--font-mono); color: var(--amber); }
 
-  .sign { margin-top: 34px; color: var(--ink-faint); font-size: 1.25rem; }
-
-  .foot {
-    display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap;
-    padding-top: 26px; padding-bottom: 40px;
-    border-top: 1px solid var(--line-soft);
-    color: var(--ink-faint); font-size: 0.9rem;
+  @media (prefers-reduced-motion: reduce) {
+    .reel__slide.is-on video, .reel__slide.is-on img { animation: none; }
   }
-  .foot a { color: var(--ink-faint); }
-  .foot a:hover { color: var(--amber); text-decoration: none; }
 </style>
+
+<script>
+  const PHOTO_MS = 5500;
+  const CLIP_MAX_MS = 10000; // clips play once and move on when they end, or here if longer
+
+  let stop: (() => void) | undefined;
+  document.addEventListener("astro:page-load", () => {
+    stop?.();
+    const all = Array.from(document.querySelectorAll<HTMLElement>(".reel__slide"));
+    if (!all.length) return;
+    const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    // A fresh order every visit, weighted: each slide draws a random key and
+    // favoured ones have theirs scaled down, so they tend to sort early
+    // without ever being fixed in place.
+    const FAVOUR = 0.35; // lower = favoured slides pulled further forward
+    const OPEN_ON_FAVOURED = 0.75; // chance the opening clip is a favoured one
+    const isClip = (s: HTMLElement) => !!s.querySelector("video");
+    const isFav = (s: HTMLElement) => s.hasAttribute("data-favoured");
+    const order = all
+      .map((s) => ({ s, key: Math.random() * (isFav(s) ? FAVOUR : 1) }))
+      .sort((a, b) => a.key - b.key)
+      .map((x) => x.s);
+
+    // Always open on a clip — usually a favoured one, sometimes any.
+    const clips = order.filter(isClip);
+    const favClips = clips.filter(isFav);
+    const pool = favClips.length && Math.random() < OPEN_ON_FAVOURED ? favClips : clips;
+    const opener = pool[Math.floor(Math.random() * pool.length)];
+    if (opener) order.unshift(...order.splice(order.indexOf(opener), 1));
+
+    /** Give a slide its real src the first time it's needed. */
+    const hydrate = (s: HTMLElement) => {
+      const m = s.querySelector<HTMLImageElement | HTMLVideoElement>("img, video");
+      if (!m || !m.dataset.src) return;
+      if (m instanceof HTMLImageElement) {
+        if (m.dataset.srcset) m.srcset = m.dataset.srcset;
+        m.src = m.dataset.src;
+      } else {
+        if (m.dataset.poster) m.poster = m.dataset.poster;
+        m.src = m.dataset.src;
+        m.preload = "auto";
+      }
+      delete m.dataset.src;
+    };
+    const video = (s: HTMLElement) => s.querySelector("video");
+
+    let i = 0, timer = 0;
+    const show = (n: number) => {
+      const prev = order[i];
+      prev.classList.remove("is-on");
+      const pv = video(prev);
+      if (pv) { pv.pause(); pv.onended = null; }
+      i = n;
+      const cur = order[i];
+      hydrate(cur);
+      hydrate(order[(i + 1) % order.length]); // warm up the next one
+      cur.classList.add("is-on");
+
+      const v = video(cur);
+      clearTimeout(timer);
+      if (reduced) return;
+      if (v) {
+        // a clip shorter than the cap ends on its own; the timer only cuts long ones
+        v.onended = () => { clearTimeout(timer); next(); };
+        v.currentTime = 0;
+        v.play().catch(() => {});
+        timer = window.setTimeout(next, CLIP_MAX_MS);
+      } else {
+        timer = window.setTimeout(next, PHOTO_MS);
+      }
+    };
+    // a hidden tab doesn't advance; it picks up where it was when you come back
+    const next = () => (document.hidden ? (timer = window.setTimeout(next, 1000)) : show((i + 1) % order.length));
+
+    show(0);
+    stop = () => {
+      clearTimeout(timer);
+      order.forEach((s) => { const v = video(s); if (v) { v.pause(); v.onended = null; } });
+    };
+  });
+</script>

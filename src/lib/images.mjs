@@ -55,6 +55,9 @@ async function optimizeVideos(dir, warn) {
   for await (const src of walk(dir, VIDEO_SRC_EXT)) {
     const srcTime = statSync(src).mtimeMs;
     const mp4 = webVideoPath(src), poster = posterPath(src);
+    // a clip cut by hand into parts (clip-1.web.mp4, clip-2.web.mp4, ...) is
+    // already converted: don't bring back a full-length clip.web.mp4 next to them
+    if (existsSync(mp4.replace(/\.web\.mp4$/, "-1.web.mp4"))) continue;
     if (!stale(mp4, srcTime) && !stale(poster, srcTime)) continue;
     hasFfmpeg ??= spawnSync("ffmpeg", ["-version"]).status === 0;
     if (!hasFfmpeg) {
@@ -155,6 +158,36 @@ export function discoverMedia(publicDirPath) {
       out.push({ type: "video", src: rel, poster: has(poster) ? `${publicDirPath}/${poster}` : undefined, file: name });
     } else if (SOURCE_EXT.test(name) || /\.webp$/i.test(name)) {
       out.push({ type: "image", src: rel, file: name });
+    }
+  }
+  return out;
+}
+
+/**
+ * A folder's media for a slideshow, built from the GENERATED files only
+ * (`*.1600w.webp` for photos, `*.web.mp4` for clips), so it works on CI where
+ * the camera originals aren't checked in. Posters are skipped as photos.
+ * @param {string} publicDirPath e.g. "/contact"
+ * @returns {{ type: "video" | "image", src: string, poster?: string }[]}
+ */
+export function discoverReel(publicDirPath) {
+  const abs = path.join(publicDir(), publicDirPath);
+  if (!existsSync(abs)) return [];
+  const names = readdirSync(abs);
+  const has = (n) => names.includes(n);
+  const out = [];
+  for (const name of names.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))) {
+    if (/\.web\.mp4$/i.test(name)) {
+      const base = name.replace(/\.web\.mp4$/i, "");
+      out.push({
+        type: "video",
+        src: `${publicDirPath}/${name}`,
+        poster: has(`${base}.poster.1600w.webp`) ? `${publicDirPath}/${base}.poster.jpg` : undefined,
+      });
+    } else if (/\.1600w\.webp$/i.test(name) && !/\.poster\.1600w\.webp$/i.test(name)) {
+      // responsive() wants the original's name; it only checks the variants exist
+      const base = name.replace(/\.1600w\.webp$/i, "");
+      out.push({ type: "image", src: `${publicDirPath}/${base}.jpg` });
     }
   }
   return out;
