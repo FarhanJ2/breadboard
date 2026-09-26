@@ -15,6 +15,7 @@ links:
 
 import DriverStationExplorer from "../../components/DriverStationExplorer.astro";
 import Video from "../../components/Video.astro";
+import ZoomVideo from "../../components/ZoomVideo.astro";
 
 <DriverStationExplorer />
 
@@ -209,13 +210,14 @@ The lid screws down with M4 button-head Torx screws into two heat-set inserts. T
 to the vertical 2x1 tube with nut rivets and M5 countersunk Torx screws. With all of that done,
 everything got riveted onto the Lexan plate, and the station was finished:
 
-![The finished driver station with the lights on, in a dark room](/projects/driver-station/assembled.jpg)
-
-<Video
+<ZoomVideo
   src="/projects/driver-station/lights.web.mp4"
   poster="/projects/driver-station/lights.poster.jpg"
   caption="the light bar running"
-  controls={false}
+  title="HawkLights"
+  subtitle="the finished driver station · summer 2026"
+  crop={1.35}
+  focus="55% 50%"
 />
 
 ### ok, not quite finished
@@ -418,4 +420,4 @@ The trailing edge fades out smoothly instead of stepping. With 30% of the span l
 turns amber and starts breathing, about once a second, so the driver can tell it's endgame from
 the corner of their eye.
 
-
+![The finished driver station with the lights on, in a dark room](/projects/driver-station/assembled.jpg)
