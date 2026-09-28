@@ -1,0 +1,279 @@
+---
+/**
+ * PREVIEW of a photo-first home page. Not linked from anywhere; the real home
+ * page is still index.astro. Delete this file once a direction is picked.
+ */
+import { getCollection } from "astro:content";
+import Base from "../layouts/Base.astro";
+import SiteHeader from "../components/SiteHeader.astro";
+import StatusLine from "../components/StatusLine.astro";
+import { imageAttrs, withBase } from "../lib/url";
+
+const HERO_CLIP = "/contact/C0294.web.mp4";
+const HERO_POSTER = "/contact/C0294.poster.jpg";
+
+const projects = (await getCollection("projects")).sort((a, b) => a.data.order - b.data.order);
+const flagship = projects.find((p) => p.data.featured) ?? projects[0];
+const ordered = [flagship, ...projects.filter((p) => p.id !== flagship.id)];
+const rows = await Promise.all(
+  ordered.map(async (p) => ({
+    p,
+    img: p.data.cover ? await imageAttrs(p.data.cover, "(max-width: 760px) 100vw, 640px") : undefined,
+  })),
+);
+
+const posts = (await getCollection("blog")).sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf());
+const heroPoster = (await imageAttrs(HERO_POSTER, "100vw")).src;
+
+const statusLabel: Record<string, string> = {
+  shipped: "shipped", active: "active", research: "research", archived: "archived",
+};
+const fmtDate = (d: Date) => d.toLocaleDateString("en-US", { month: "short", year: "2-digit", timeZone: "UTC" }).toLowerCase().replace(" ", " '");
+---
+
+<Base title="Farhan Jamil — Workbench">
+  <SiteHeader />
+
+  <section class="hero">
+    <video class="hero__clip" src={withBase(HERO_CLIP)} poster={heroPoster} muted loop autoplay playsinline aria-hidden="true"></video>
+    <div class="hero__fg container">
+      <p class="hero__eyebrow hand">welcome to the workbench <span aria-hidden="true">★</span></p>
+      <h1 class="hero__name">
+        <img src={withBase("/signature-dark.svg")} alt="farhan jamil" width="760" height="147" fetchpriority="high" />
+      </h1>
+      <p class="hero__tag">a journal of <em>engineering</em>, robotics &amp; other random stuff</p>
+      <div class="hero__status"><StatusLine items={["working on Portals in Unity", "finalizing GTSAM project"]} /></div>
+    </div>
+  </section>
+
+  <main class="container">
+    <div class="head">
+      <h2 class="hand">builds —</h2>
+      <a href={withBase("/projects")} class="mono">all projects →</a>
+    </div>
+
+    <ol class="rows">
+      {rows.map(({ p, img }, i) => (
+        <li class:list={["row", { "row--flip": i % 2 === 1 }]}>
+          <a href={withBase(`/projects/${p.id}`)} class="row__link" aria-label={`Open ${p.data.title}`}>
+            <div class="row__media">
+              {img
+                ? <img {...img} alt={p.data.coverAlt || p.data.title} loading={i === 0 ? "eager" : "lazy"} decoding="async" />
+                : <span class="row__blank mono" aria-hidden="true">{p.data.codename}</span>}
+            </div>
+            <div class="row__text">
+              <p class="row__meta mono">
+                <span>{String(i + 1).padStart(2, "0")}</span>
+                <span class="row__status" data-status={p.data.status}>{statusLabel[p.data.status]}</span>
+                <span>{p.data.year}</span>
+              </p>
+              <h3 class="row__title">{p.data.title}</h3>
+              <p class="row__blurb">{p.data.blurb}</p>
+              <ul class="row__tech">
+                {p.data.tech.slice(0, 4).map((t) => <li class="mono">{t}</li>)}
+              </ul>
+              <span class="row__cta mono">open the writeup →</span>
+            </div>
+          </a>
+        </li>
+      ))}
+    </ol>
+
+    <div class="head">
+      <h2 class="hand">writing —</h2>
+      <a href={withBase("/blog")} class="mono">the full log →</a>
+    </div>
+    <ul class="posts">
+      {posts.map((post) => (
+        <li>
+          <a href={withBase(`/blog/${post.id}`)} class="post">
+            <span class="post__date mono">{fmtDate(post.data.date)}</span>
+            <span class="post__body">
+              <span class="post__title">{post.data.title}</span>
+              <span class="post__teaser">{post.data.teaser}</span>
+            </span>
+            <span class="post__arrow" aria-hidden="true">→</span>
+          </a>
+        </li>
+      ))}
+    </ul>
+  </main>
+
+  <footer class="container foot">
+    <span>Townsend Harris '26 · RPI ECSE/CSE '30</span>
+    <span class="mono">breadboard — built in the open</span>
+  </footer>
+</Base>
+
+<style>
+  /* --- hero: one clip, full width, the page fades up out of it --- */
+  .hero {
+    position: relative;
+    height: min(88vh, 860px);
+    min-height: 520px;
+    margin-top: -64px; /* run the footage up behind the header */
+    overflow: hidden;
+    display: flex;
+    align-items: flex-end;
+  }
+  .hero__clip {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    z-index: -1;
+  }
+  /* only the last strip fades into the page; no scrim over the footage itself */
+  .hero::after {
+    content: "";
+    position: absolute;
+    inset: auto 0 0 0;
+    height: 22%;
+    background: linear-gradient(to bottom, transparent, var(--bg));
+    z-index: -1;
+    pointer-events: none;
+  }
+  .hero__fg { width: 100%; padding-bottom: clamp(28px, 6vh, 64px); }
+  .hero__eyebrow {
+    margin: 0 0 4px 4px;
+    font-size: 1.5rem;
+    color: var(--amber);
+    text-shadow: 0 0 2px rgba(0, 0, 0, 0.9), 0 1px 4px rgba(0, 0, 0, 0.8), 0 4px 18px rgba(0, 0, 0, 0.6);
+  }
+  .hero__name { margin: 0; line-height: 0; }
+  .hero__name img {
+    width: min(760px, 86vw);
+    height: auto;
+    filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.55)) drop-shadow(0 6px 22px rgba(0, 0, 0, 0.45));
+  }
+  .hero__tag {
+    margin: 14px 0 0 4px;
+    font-size: clamp(1.05rem, 2vw, 1.3rem);
+    color: #fff;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9), 0 4px 18px rgba(0, 0, 0, 0.7);
+  }
+  .hero__tag em { color: var(--blueprint); }
+  .hero__status { margin: 10px 0 0 4px; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9); }
+
+  /* --- section heads --- */
+  .head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin: clamp(48px, 8vw, 88px) 0 22px;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 10px;
+  }
+  .head h2 { margin: 0; font-size: 1.9rem; color: var(--amber); font-family: var(--font-hand); font-weight: 500; }
+  .head a { color: var(--ink-soft); font-size: 0.82rem; text-decoration: none; }
+  .head a:hover { color: var(--amber); }
+
+  /* --- builds: one big alternating row each --- */
+  .rows { list-style: none; margin: 0; padding: 0; display: grid; gap: clamp(40px, 7vw, 84px); }
+  .row__link {
+    display: grid;
+    grid-template-columns: 1.25fr 1fr;
+    gap: clamp(22px, 4vw, 56px);
+    align-items: center;
+    color: inherit;
+    text-decoration: none;
+  }
+  .row--flip .row__media { order: 2; }
+  .row__media {
+    aspect-ratio: 4 / 3;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    background: #07090d;
+  }
+  .row__media img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    transition: scale 0.6s cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+  .row__link:hover .row__media img { scale: 1.04; }
+  .row__blank {
+    display: grid;
+    place-items: center;
+    height: 100%;
+    font-size: clamp(1.6rem, 4vw, 2.6rem);
+    letter-spacing: 0.12em;
+    color: var(--line);
+  }
+  .row__meta { display: flex; gap: 14px; margin: 0 0 12px; font-size: 0.75rem; color: var(--ink-faint); letter-spacing: 0.06em; }
+  .row__status::before {
+    content: "";
+    display: inline-block;
+    width: 7px; height: 7px;
+    margin-right: 6px;
+    border-radius: 50%;
+    background: var(--phosphor);
+    box-shadow: 0 0 8px var(--phosphor);
+    vertical-align: 1px;
+  }
+  .row__status[data-status="active"]::before { background: var(--amber); box-shadow: 0 0 8px var(--amber); }
+  .row__title {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: clamp(1.7rem, 3.4vw, 2.6rem);
+    line-height: 1.05;
+    color: var(--ink);
+    transition: color 0.2s ease;
+  }
+  .row__link:hover .row__title { color: var(--amber); }
+  .row__blurb { margin: 14px 0 0; color: var(--ink-soft); font-size: 1.08rem; line-height: 1.6; }
+  .row__tech { list-style: none; display: flex; flex-wrap: wrap; gap: 6px; margin: 16px 0 0; padding: 0; }
+  .row__tech li { font-size: 0.72rem; padding: 3px 8px; border: 1px solid var(--line); border-radius: 6px; color: var(--ink-faint); }
+  .row__cta { display: inline-block; margin-top: 20px; font-size: 0.8rem; color: var(--amber); }
+
+  /* --- writing --- */
+  .posts { list-style: none; margin: 0; padding: 0; }
+  .post {
+    display: grid;
+    grid-template-columns: 90px 1fr auto;
+    gap: 18px;
+    align-items: baseline;
+    padding: 18px 0;
+    border-bottom: 1px solid var(--line-soft);
+    color: inherit;
+    text-decoration: none;
+  }
+  .post__date { font-size: 0.78rem; color: var(--ink-faint); }
+  .post__title { display: block; font-family: var(--font-display); font-size: 1.35rem; color: var(--ink); transition: color 0.2s ease; }
+  .post__teaser { display: block; margin-top: 4px; color: var(--ink-soft); }
+  .post__arrow { color: var(--amber); }
+  .post:hover .post__title { color: var(--amber); }
+
+  .foot {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-top: 80px;
+    padding: 24px 0 40px;
+    border-top: 1px solid var(--line-soft);
+    font-size: 0.85rem;
+    color: var(--ink-faint);
+  }
+
+  @media (max-width: 760px) {
+    .row__link { grid-template-columns: 1fr; }
+    .row--flip .row__media { order: 0; }
+    .post { grid-template-columns: 1fr auto; }
+    .post__date { grid-column: 1 / -1; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .row__media img { transition: none; }
+  }
+</style>
+
+<script>
+  // honour reduced motion: keep the poster, don't loop footage
+  document.addEventListener("astro:page-load", () => {
+    const v = document.querySelector<HTMLVideoElement>(".hero__clip");
+    if (v && matchMedia("(prefers-reduced-motion: reduce)").matches) { v.removeAttribute("autoplay"); v.pause(); }
+  });
+</script>

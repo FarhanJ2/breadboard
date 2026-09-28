@@ -1,0 +1,214 @@
+---
+/**
+ * PoseLink data-flow diagram for the GTSAM writeup: the Orange Pi and the
+ * roboRIO side by side, with the two UDP messages running between the GTSAM
+ * smoother and the PoseLink subsystem.
+ *
+ * Two hand-placed SVG layouts rather than one scaled one: side by side on
+ * desktop, stacked on phones (a 720-wide drawing shrunk to a phone would put the
+ * labels at ~7px). Only one is ever displayed.
+ */
+---
+
+<figure class="pld">
+  <!-- desktop: side by side -->
+  <svg class="pld__wide" viewBox="0 0 720 560" role="img" aria-labelledby="pld-title-w">
+    <title id="pld-title-w">PoseLink data flow between the Orange Pi and the roboRIO</title>
+    <defs>
+      <marker id="pld-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="h-faint" d="M0 0L10 5L0 10z" /></marker>
+      <marker id="pld-l" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="h-link" d="M0 0L10 5L0 10z" /></marker>
+    </defs>
+
+    <!-- Orange Pi -->
+    <rect class="panel" x="10" y="10" width="280" height="366" rx="14" />
+    <text class="phead" x="30" y="36">ORANGE PI 5</text>
+
+    <rect class="node" x="30" y="52" width="240" height="52" rx="8" />
+    <text class="t" x="150" y="75">5 AprilTag cameras</text>
+    <text class="s" x="150" y="93">OV2311 · OV9281</text>
+
+    <path class="edge" d="M150 104V130" marker-end="url(#pld-a)" />
+    <text class="el" x="158" y="121">frames</text>
+
+    <rect class="node" x="30" y="132" width="240" height="52" rx="8" />
+    <text class="t" x="150" y="155">PhotonVision</text>
+    <text class="s" x="150" y="173">tags → robot pose per camera</text>
+
+    <path class="edge" d="M150 184V210" marker-end="url(#pld-a)" />
+    <text class="el" x="158" y="201">NetworkTables</text>
+
+    <rect class="node" x="30" y="212" width="240" height="52" rx="8" />
+    <text class="t" x="150" y="235">VisionFilter</text>
+    <text class="s" x="150" y="253">reject · weight by range</text>
+
+    <path class="edge" d="M150 264V290" marker-end="url(#pld-a)" />
+    <text class="el" x="158" y="281">accepted tags</text>
+
+    <rect class="node node--key" x="30" y="292" width="240" height="64" rx="8" />
+    <text class="t" x="150" y="316">GTSAM smoother</text>
+    <text class="s" x="150" y="333">iSAM2 · 1.5 s fixed lag</text>
+    <text class="s" x="150" y="347">C++ over JNI</text>
+
+    <!-- roboRIO -->
+    <rect class="panel" x="430" y="10" width="280" height="540" rx="14" />
+    <text class="phead" x="450" y="36">ROBORIO</text>
+
+    <rect class="node" x="450" y="52" width="220" height="52" rx="8" />
+    <text class="t" x="560" y="75">Swerve + gyro</text>
+    <text class="s" x="560" y="93">4 modules · Pigeon 2</text>
+
+    <path class="edge" d="M560 104V130" marker-end="url(#pld-a)" />
+
+    <rect class="node" x="450" y="132" width="220" height="52" rx="8" />
+    <text class="t" x="560" y="155">Wheel odometry</text>
+    <text class="s" x="560" y="173">runs the whole match</text>
+
+    <path class="edge" d="M560 184V290" marker-end="url(#pld-a)" />
+    <text class="el" x="568" y="241">cumulative pose</text>
+
+    <rect class="node" x="450" y="292" width="220" height="64" rx="8" />
+    <text class="t" x="560" y="316">PoseLink</text>
+    <text class="s" x="560" y="333">seqnums · config hash</text>
+    <text class="s" x="560" y="347">staleness check</text>
+
+    <path class="edge" d="M560 356V390" marker-end="url(#pld-a)" />
+    <text class="el" x="568" y="377">fused pose</text>
+
+    <rect class="node node--key" x="450" y="392" width="220" height="64" rx="8" />
+    <text class="t" x="560" y="416">RobotState</text>
+    <text class="s" x="560" y="433">latency-compensated pose</text>
+    <text class="s" x="560" y="447">wheel-only if stale &gt; 200 ms</text>
+
+    <path class="edge" d="M560 456V482" marker-end="url(#pld-a)" />
+
+    <rect class="node" x="450" y="484" width="220" height="44" rx="8" />
+    <text class="t" x="560" y="511">Aiming · SOTM</text>
+
+    <!-- wheel motion for latency compensation, and the fallback -->
+    <path class="fall" d="M670 158H692V424H672" marker-end="url(#pld-a)" />
+    <text class="el el--v" transform="translate(703 291) rotate(90)">wheel motion · fallback</text>
+
+    <!-- the link, drawn last so it sits over both panels -->
+    <text class="lhead" x="360" y="282">UDP · protobuf</text>
+    <text class="ll" x="360" y="304">odometry · 50 Hz</text>
+    <path class="link" d="M450 313H272" marker-end="url(#pld-l)" />
+    <path class="link" d="M270 339H448" marker-end="url(#pld-l)" />
+    <text class="ll" x="360" y="358">fused pose + cov</text>
+  </svg>
+
+  <!-- phones: stacked -->
+  <svg class="pld__tall" viewBox="0 0 360 848" role="img" aria-labelledby="pld-title-t">
+    <title id="pld-title-t">PoseLink data flow between the Orange Pi and the roboRIO</title>
+    <defs>
+      <marker id="pld-at" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="h-faint" d="M0 0L10 5L0 10z" /></marker>
+      <marker id="pld-lt" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="h-link" d="M0 0L10 5L0 10z" /></marker>
+    </defs>
+
+    <rect class="panel" x="8" y="8" width="344" height="328" rx="14" />
+    <text class="phead" x="28" y="32">ORANGE PI 5</text>
+
+    <rect class="node" x="28" y="44" width="236" height="48" rx="8" />
+    <text class="t" x="146" y="65">5 AprilTag cameras</text>
+    <text class="s" x="146" y="82">OV2311 · OV9281</text>
+    <path class="edge" d="M146 92V114" marker-end="url(#pld-at)" />
+
+    <rect class="node" x="28" y="116" width="236" height="48" rx="8" />
+    <text class="t" x="146" y="137">PhotonVision</text>
+    <text class="s" x="146" y="154">tags → robot pose per camera</text>
+    <path class="edge" d="M146 164V186" marker-end="url(#pld-at)" />
+
+    <rect class="node" x="28" y="188" width="236" height="48" rx="8" />
+    <text class="t" x="146" y="209">VisionFilter</text>
+    <text class="s" x="146" y="226">reject · weight by range</text>
+    <path class="edge" d="M146 236V258" marker-end="url(#pld-at)" />
+
+    <rect class="node node--key" x="28" y="260" width="236" height="62" rx="8" />
+    <text class="t" x="146" y="283">GTSAM smoother</text>
+    <text class="s" x="146" y="300">iSAM2 · 1.5 s fixed lag</text>
+    <text class="s" x="146" y="314">C++ over JNI</text>
+
+    <text class="lhead" x="146" y="363">UDP · protobuf</text>
+
+    <rect class="panel" x="8" y="380" width="344" height="460" rx="14" />
+    <text class="phead" x="28" y="404">ROBORIO</text>
+
+    <rect class="node" x="28" y="416" width="236" height="48" rx="8" />
+    <text class="t" x="146" y="437">Swerve + gyro</text>
+    <text class="s" x="146" y="454">4 modules · Pigeon 2</text>
+    <path class="edge" d="M146 464V486" marker-end="url(#pld-at)" />
+
+    <rect class="node" x="28" y="488" width="236" height="48" rx="8" />
+    <text class="t" x="146" y="509">Wheel odometry</text>
+    <text class="s" x="146" y="526">runs the whole match</text>
+    <path class="edge" d="M146 536V598" marker-end="url(#pld-at)" />
+    <text class="el" x="154" y="572">cumulative pose</text>
+
+    <rect class="node" x="28" y="600" width="236" height="62" rx="8" />
+    <text class="t" x="146" y="623">PoseLink</text>
+    <text class="s" x="146" y="640">seqnums · config hash</text>
+    <text class="s" x="146" y="654">staleness check</text>
+    <path class="edge" d="M146 662V688" marker-end="url(#pld-at)" />
+
+    <rect class="node node--key" x="28" y="690" width="236" height="62" rx="8" />
+    <text class="t" x="146" y="713">RobotState</text>
+    <text class="s" x="146" y="730">latency-compensated pose</text>
+    <text class="s" x="146" y="744">wheel-only if stale &gt; 200 ms</text>
+    <path class="edge" d="M146 752V774" marker-end="url(#pld-at)" />
+
+    <rect class="node" x="28" y="776" width="236" height="44" rx="8" />
+    <text class="t" x="146" y="803">Aiming · SOTM</text>
+
+    <!-- the link: fused pose down the inner lane, odometry up the outer -->
+    <path class="link" d="M264 302H300V620H266" marker-end="url(#pld-lt)" />
+    <path class="link" d="M264 642H330V280H266" marker-end="url(#pld-lt)" />
+    <text class="ll ll--v" transform="translate(291 460) rotate(-90)">fused pose + cov</text>
+    <text class="ll ll--v" transform="translate(342 460) rotate(-90)">odometry · 50 Hz</text>
+
+    <path class="fall" d="M28 512H16V721H26" marker-end="url(#pld-at)" />
+  </svg>
+
+  <figcaption>
+    Wheel odometry goes to the Pi as a cumulative pose; the fused pose comes back and is caught up
+    with the wheel motion since its sample time. Dashed: that same wheel odometry, which the RIO
+    falls back to if the Pi goes quiet.
+  </figcaption>
+</figure>
+
+<style>
+  .pld { margin: 2em 0; }
+  .pld svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .pld__tall { display: none !important; max-width: 420px; margin: 0 auto; }
+  @media (max-width: 600px) {
+    .pld__wide { display: none !important; }
+    .pld__tall { display: block !important; }
+  }
+
+  .panel { fill: color-mix(in srgb, var(--bg-raise) 94%, transparent); stroke: var(--line); stroke-width: 1; }
+  .phead { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.14em; fill: var(--ink-faint); }
+
+  .node { fill: var(--bg-inset); stroke: var(--line); stroke-width: 1; }
+  .node--key { stroke: var(--blueprint); stroke-width: 1.4; }
+  .t { font-family: var(--font-display); font-size: 15px; fill: var(--ink); text-anchor: middle; }
+  .s { font-family: var(--font-mono); font-size: 10.5px; fill: var(--ink-faint); text-anchor: middle; }
+
+  .edge { fill: none; stroke: var(--ink-faint); stroke-width: 1.2; }
+  .el { font-family: var(--font-mono); font-size: 10px; fill: var(--ink-faint); }
+  .el--v { text-anchor: middle; }
+  .h-faint { fill: var(--ink-faint); }
+
+  .link { fill: none; stroke: var(--amber); stroke-width: 1.6; }
+  .h-link { fill: var(--amber); }
+  .lhead { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.08em; fill: var(--amber); text-anchor: middle; }
+  .ll { font-family: var(--font-mono); font-size: 10px; fill: color-mix(in srgb, var(--amber) 75%, var(--ink-faint)); text-anchor: middle; }
+  .ll--v { text-anchor: middle; }
+
+  .fall { fill: none; stroke: var(--ink-faint); stroke-width: 1.2; stroke-dasharray: 4 4; }
+
+  figcaption {
+    margin-top: 0.8em;
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    line-height: 1.55;
+    color: var(--ink-faint);
+  }
+</style>

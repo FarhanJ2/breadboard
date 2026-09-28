@@ -1,0 +1,290 @@
+---
+title: "PoseLink: GTSAM pose estimation on an Orange Pi"
+codename: "POSELINK"
+date: 2026-09-28
+tags: ["WRITEUP"]
+teaser: "Moving AprilTag vision and pose estimation off the roboRIO onto an Orange Pi, and swapping the Kalman filter for a GTSAM factor graph that puts late camera frames back where they belong in time."
+stat:
+  value: "0.65 ms"
+  label: "median GTSAM solve on the Pi"
+readMins: 13
+---
+
+import PoseLinkDiagram from "../../components/PoseLinkDiagram.astro";
+
+Every FRC pose estimator I'd written before this one was a Kalman-style filter:
+WPILib's `SwerveDrivePoseEstimator`, predict from odometry, correct on each AprilTag. It all
+ran on the roboRIO, next to everything else the robot had to do in a 20 ms loop.
+
+PoseLink is what replaced it on Shaquille O'Steel, Steel Hawks' 2026 robot, over the summer. Vision and
+pose estimation moved to an Orange Pi 5. The estimator is now a GTSAM factor graph, a
+fixed-lag smoother that re-solves the last 1.5 seconds of the robot's path every cycle. The
+roboRIO keeps its odometry, sends it to the Pi, and gets a fused pose back.
+
+It lives on the `feat/gtsam` branch of
+[Rebuilt2026](https://github.com/steelhawks/Rebuilt2026/tree/feat/gtsam).
+
+## the idea came from 6328
+
+The push came from FRC 6328, Mechanical Advantage. In their 2026 build thread they wrote up
+[Project Idun](https://www.chiefdelphi.com/t/frc-6328-mechanical-advantage-2026-build-thread/509595/616),
+which moves their robot code off the roboRIO and onto an M4 Mac mini. The RIO stays on the
+robot as an IO device, reading and writing CAN, and Idun is the bridge between the two. Their
+reasoning was the roboRIO's performance ceiling: loop overruns in matches, time lost to
+optimization instead of tuning, and not being able to tell how risky a code change at an event
+really was.
+
+The part that made it work for them is AdvantageKit's IO layer. Robot logic already talks to
+hardware through an interface, so the IO implementations can live on a different machine than
+the logic that uses them. They also used a custom protocol between the RIO and the Mac mini
+instead of NetworkTables, because of latency and reliability.
+
+I didn't have a Mac mini, a season's worth of time, or a reason to move *all* the robot code.
+But pose estimation was the heaviest and most self-contained thing on the RIO, and it already
+had a clean seam: sensors in, one pose out. So PoseLink is a much smaller version of the same
+move. One subsystem goes to a coprocessor, the same IO-interface pattern sits at the boundary,
+and there's a custom protocol between them.
+
+## the split
+
+<PoseLinkDiagram />
+
+Two processes run on the Pi. PhotonVision does the camera work, same as it would anywhere
+else. `pi-service` is the new part: a Java program (an AdvantageKit `LoggedRobot`, so it logs
+like robot code does) that reads PhotonVision's results, filters them, feeds the factor graph,
+and talks to the RIO. The GTSAM math is C++, and it sits behind a small JNI surface: `create`,
+`reset`, `addOdometry`, `addVisionMeasurement`, `update`, `getResult`.
+
+On the RIO, the old `Vision` subsystem (Limelight, PhotonVision and QuestNav implementations)
+is gone. In its place is `PoseLink`, which follows the usual IO pattern: `PoseLinkIOUDP` on the
+real robot, `PoseLinkIOSim` in simulation, and an empty IO in replay.
+
+The two sides talk over UDP with Protobuf messages defined in one shared `.proto` file, at about
+50 Hz each way. The RIO sends its **cumulative** wheel-odometry pose, not per-cycle deltas. The
+Pi differences consecutive poses itself:
+
+```java
+// Relative motion since the last sample, in the last pose's frame. This
+// spans any dropped packets correctly (cumulative poses), so no drivetrain
+// kinematics are needed here.
+Pose2d delta = s.odomPose().relativeTo(lastOdomPose);
+estimator.addOdometry(s.timestamp(), delta.getX(), delta.getY(), ...);
+```
+
+That one choice makes a dropped packet harmless. With deltas, a lost packet is lost motion. With
+cumulative poses, the next packet just covers a longer interval.
+
+## why a factor graph
+
+A Kalman filter keeps one current estimate and folds each measurement into it as it arrives. A
+factor graph keeps the recent *path*: one node per odometry sample, linked by constraints. Wheel
+odometry is a `BetweenFactor` between consecutive nodes ("I moved this much, give or take this
+much"). Each accepted AprilTag frame is a `PriorFactor` on the node at its capture time ("at this
+moment I was here, give or take this much"). GTSAM finds the path that best satisfies all of them
+at once.
+
+Solving the whole match would grow without bound, so PoseLink uses GTSAM's
+`IncrementalFixedLagSmoother`. It's iSAM2 underneath, and it keeps only the last 1.5 seconds of
+nodes, marginalizing older ones away. Every update can revise that whole window, so a strong
+tag sighting can straighten out the last second and a half of odometry, not just nudge the
+current estimate.
+
+The covariance comes out of the solver too. The Pi reads the marginal covariance of the newest
+committed node and turns it into a 0–1 quality score that rides along with the pose.
+
+## putting late frames back in time
+
+This is the problem the factor graph actually solves. A camera frame always shows up
+late. By the time PhotonVision has captured it, found the tags, and solved for a pose, the robot
+has moved on. In one of my August test sessions, the median frame arrived **66 ms** behind
+the newest odometry sample, and the slowest 10% were 79 ms or more. At 3 m/s that's about 20 cm.
+
+So the graph doesn't hand odometry to the smoother right away. New nodes wait in a 150 ms staging
+buffer first, comfortably longer than that latency. When a tag frame arrives, it's
+placed at its real capture time. If that time falls between two staged nodes, the odometry edge
+between them is **split**. A new node is inserted at the exact capture time, and the motion is
+divided by interpolating on SE(2):
+
+```cpp
+double f = (v.t - t0) / (t1 - t0);
+Pose2 d = nodes_[i].delta;
+Pose2 d1 = interpolate(d, f);            // Pose2::Expmap(f * Pose2::Logmap(d))
+
+Node mid;
+mid.t = v.t;
+mid.delta = d1;
+mid.odomVar = nodes_[i].odomVar * f;     // the variance splits with the motion
+mid.hasPrior = true;
+mid.priorPose = v.pose;
+...
+nodes_[i].delta = d1.between(d);         // what's left of the original edge
+nodes_[i].odomVar = nodes_[i].odomVar * (1.0 - f);
+nodes_.insert(nodes_.begin() + i, mid);
+```
+
+Everything happens in PoseLink's own buffer before the smoother sees it, so GTSAM never has to remove a
+factor it already has. A frame that arrives after its bracket has been flushed falls back to
+attaching to the nearest committed node.
+
+The pose the Pi reports is the newest committed node, with the still-staged odometry composed on
+top of it.
+
+## catching up on the RIO
+
+There's a second delay after that one. The fused pose the Pi sends back is its estimate at some
+sample time. By the time it has gone out over UDP, through a Pi cycle and a solve, back over UDP,
+and into a RIO loop, it's 40–80 ms old. Used raw, the robot's pose would trail the robot.
+
+The old `SwerveDrivePoseEstimator` hid this by replaying its odometry buffer forward after every
+vision correction. Splitting the estimator across the network meant doing that replay ourselves.
+The RIO keeps a buffer of its own wheel-only poses, looks up where the wheels said it was at the
+Pi's sample time, and composes the motion since then onto the fused pose:
+
+```java
+Optional<Pose2d> wheelAtFused = wheelPoseBuffer.getSample(fusedSampleTimestamp);
+...
+return fusedPose.plus(new Transform2d(wheelAtFused.get(), wheelOdometry.getPoseMeters()));
+```
+
+That wheel buffer is separate from the fused-pose buffer on purpose. Measuring motion with the
+fused pose would feed the Pi's correction back into itself every cycle.
+
+## never trusting the network
+
+Once pose estimation is on another computer, "the pose" can be missing, late, duplicated,
+reordered, or produced by a different version of the code. Most of PoseLink is dealing with that.
+
+- **Sequence numbers.** Both directions carry one. The RIO applies a fused pose only if it's
+  strictly newer, by seqnum and by sample time, than the last one it applied. A reordered or
+  duplicated packet can never move the pose backwards.
+- **Fallback.** The RIO runs plain wheel odometry the whole match, whether or not it's being
+  used. If no fresh fused pose has arrived in **200 ms** (about 10 missed packets), it switches to
+  that and raises an alert. It switches back the moment fresh data resumes. Because the fallback
+  never stopped updating, nothing jumps.
+- **Config hash.** Both sides hash their AprilTag config (field layout and alliance tag sets).
+  If the Pi's hash doesn't match the RIO's, the RIO drops the pose and raises an error instead of
+  fusing against a stale layout.
+- **Resets.** When the RIO resets its pose, at the start of auto for example, it bumps a reset
+  seqnum and sends it with every packet until the Pi echoes it back. The Pi applies each reset
+  seqnum once, so the reset survives dropped packets and never repeats.
+- **Restarts.** A dashboard button asks the Pi to restart its service, using the same kind of
+  counter. The Pi exits, and systemd brings it back two seconds later. The RIO runs on its
+  fallback in the meantime.
+- **Log pairing.** The Pi has no real-time clock, so its log filenames are meaningless. One
+  session produced a Pi log stamped two months in the past. Every RIO boot mints a session id and
+  sends it with every packet. The Pi logs it, and `tools/pull_logs.py` uses it to pair each RIO
+  log with its Pi log and work out the clock offset between them.
+
+The failures that took longest to find were the ones where everything *looked* fine:
+
+- **The Pi kept talking after the RIO stopped.** In one session the RIO link went quiet and the
+  Pi kept solving and sending at 50 Hz for another 22 minutes. Vision priors piled onto the one
+  remaining node with no odometry to hold them down, so the pose kept wandering. The RIO couldn't
+  tell, because its staleness check was on receive time, and it was receiving a perfectly steady
+  stream. Now the Pi stops publishing once odometry has been silent for 250 ms.
+- **The RIO restarted under the Pi.** After a redeploy, the Pi still held the previous boot's
+  last odometry pose. The first new sample differenced into a teleport-sized odometry factor,
+  asserted to about 3 mm. The Pi's reset high-water mark was also from the old boot, so resets
+  were silently ignored. Now a new session id resets all of that state, as if the service had
+  just started.
+
+## deploying two computers
+
+Splitting the robot across two computers also splits the deploy. Before PoseLink, "deploy" meant
+one button. Now the vision service has to land on the Pi too, and the two halves have to agree:
+same wire format, same tag config, same build.
+
+I kept `deploy` exactly as WPILib ships it, roboRIO only, so the **Deploy Robot Code** button in
+VS Code still works the way everyone on the team expects. The Pi got its own Gradle tasks next to
+it:
+
+| command | what it does |
+|---|---|
+| `./gradlew deploy` | roboRIO only, the normal VS Code button |
+| `./gradlew deployPi` | Orange Pi only |
+| `./gradlew deployAll` | both |
+
+`deployAll` is just `deploy` plus `deployPi`. `deployPi` builds the service jar and the Pi's
+arm64 WPILib native libraries, then hands the jar to `deploy_pi.sh`, which does the rest over
+SSH:
+
+1. rsync the jar, the native libraries and the C++ source to the Pi
+2. build the GTSAM shim, `libposelink_gtsam.so`, on the Pi itself
+3. restart the `poselink` systemd service
+
+The natives were most of the work. WPILib only ever calls `System.loadLibrary()`, so native
+libraries packed inside the jar are invisible at runtime, and the service died with
+`no ntcorejni in java.library.path`. They're now synced as a plain directory that the systemd unit
+puts on `java.library.path`. One library can't come from Gradle at all: PhotonVision doesn't
+publish an arm64 build of `photontargeting`. The deploy script pulls it out of the PhotonVision
+install already on the Pi, so it's the same version as the PhotonVision it's talking to by
+construction.
+
+If the Pi is off when you run `deployAll`, the RIO half still deploys, but the Pi step fails
+loudly. That's on purpose: a silent skip would leave last week's vision code running under this
+week's robot code.
+
+Every Pi jar is also stamped with the git commit it was built from. The Pi reports it back over
+the link, so a RIO log alone tells you which vision build produced it.
+
+## what the logs caught
+
+AdvantageKit logging on both sides is what made any of this debuggable. The Pi logs, per camera,
+the pose, the tags, why each frame was accepted or rejected, and how far it disagreed with the
+fused pose. Some of what that turned up:
+
+- **Timestamps corrected twice.** PhotonVision runs its own time sync and already reports capture
+  times on the RIO's clock. I was adding NetworkTables' server offset on top. That put vision
+  timestamps about 1.78 billion seconds away from odometry. Every frame failed the time check and
+  got pinned to the oldest node in the buffer. With the robot parked, every node holds the same
+  pose, so the Pi's logs looked calm while the robot behaved badly.
+- **Heading trust that wasn't trust.** The vision standard deviation scaled with distance
+  squared, and heading shared that factor with position. A single tag at 1.75 m came out to a
+  heading standard deviation of 2.76 rad: "trust this heading to ±158°." Against odometry
+  asserted to 0.057° per step, the graph ignored vision heading entirely. The fused heading sat
+  about 55° off what all the cameras agreed on. Heading now scales linearly with distance, since
+  its error doesn't grow the way depth error does.
+- **Odometry noise per step, not per match.** The odometry variances described 4.5 cm and 2.5°
+  of error in *every 20 ms step*, about 50× looser than real swerve odometry. The smoother could
+  bend the whole 1.5 s window to chase one tag, which showed up as jitter. They're now 3.2 mm and
+  0.06° per step.
+- **A bump that never ended.** `isOnBump` was stuck true, because an inverted Pigeon read about
+  179° of roll. That sent every frame down the on-a-bump branch, which also skipped the
+  per-camera trust factor.
+
+## numbers
+
+From one Pi log of an August test session (about 44,000 solves):
+
+- **GTSAM solve:** 0.65 ms median, 9.2 ms at the 95th percentile, 10.5 ms at the 99th.
+- **Vision latency:** frames arrive a median of 66 ms behind the newest odometry.
+- **Camera vs fused pose:** a median of 7 cm between where a single camera put the robot and
+  where the graph did. That's disagreement, not error. There's no ground truth in these logs.
+
+A sub-millisecond median solve on an Orange Pi, for a smoother re-solving a 1.5 s window, is the
+number that made the whole thing feel worth it.
+
+## where it stands, and why it won't last
+
+PoseLink is still on its feature branch, not merged into the team's main robot code. It runs, it
+survives dropped packets and restarts on either side, and the logs pair up. What it still needs
+is field time: the noise values above were set to be sane and observable, and several of them are
+marked in the code as needing a field pass to confirm.
+
+It probably won't get much of that, because the reason it exists is going away. Steel Hawks is
+moving to SystemCore, the controller that replaces the roboRIO in 2027, with roughly an order of
+magnitude more processing power. The whole two-computer design was a workaround for the roboRIO
+not having room for this. On SystemCore there's no need to ship odometry across a network and
+wait for a pose to come back.
+
+So the part that dies is the link: the UDP messages, the sequence numbers, the session ids, the
+restart handshake, `deployPi`, and the catch-up math on the RIO. The part that survives is the
+estimator. The GTSAM fixed-lag smoother, the late-frame splicing, and the vision weighting can run
+right next to the odometry on SystemCore, as one program on one device, with the odometry going
+in directly instead of over UDP.
+
+That's fine with me. Most of what I learned here was about the link, and the lesson from it is
+the one 6328 put first. Moving work to a faster computer is the easy part. The hard part is making
+the robot behave exactly as safely and predictably when the connection between the two computers
+does something you didn't expect. With SystemCore, the best version of that connection is not
+having one.
