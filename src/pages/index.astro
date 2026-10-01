@@ -4,6 +4,8 @@ import Base from "../layouts/Base.astro";
 import StatusLine from "../components/StatusLine.astro";
 import PostCard from "../components/PostCard.astro";
 import ProjectCard from "../components/ProjectCard.astro";
+import Desk from "../components/Desk.astro";
+import DeskPhone from "../components/DeskPhone.astro";
 import { imageAttrs, withBase } from "../lib/url";
 
 const posts = (await getCollection("blog")).sort(
@@ -24,6 +26,13 @@ const otherBuilds = projects.filter((p) => p.id !== flagship.id);
 const statusLabel: Record<string, string> = {
   shipped: "SHIPPED", active: "ACTIVE", research: "RESEARCH", archived: "ARCHIVED",
 };
+
+const deskProjects = projects.map((p) => ({ title: p.data.title, href: withBase(`/projects/${p.id}`), meta: p.data.year }));
+const deskPosts = posts.map((p) => ({
+  title: p.data.title,
+  href: withBase(`/blog/${p.id}`),
+  meta: p.data.date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }),
+}));
 
 const status = [
   "blahahhahhahah",
@@ -47,8 +56,8 @@ const status = [
     </div>
   </header>
 
-  <main class="container">
-    <section class="hero">
+  <Desk projects={deskProjects} posts={deskPosts}>
+    <div class="hero">
       <p class="eyebrow hand">welcome to the workbench <span aria-hidden="true">★</span></p>
       <h1 class="name">
         <img
@@ -64,7 +73,11 @@ const status = [
         a journal of <em>engineering</em>, robotics &amp; other random stuff
       </p>
       <StatusLine items={status} />
-    </section>
+    </div>
+  </Desk>
+  <DeskPhone status={status} />
+
+  <main class="container">
 
     <section class="builds">
       <div class="builds__head">
@@ -207,21 +220,20 @@ const status = [
   }
 
   /* --- hero --- */
-  .hero { padding: clamp(28px, 7vw, 72px) 0 clamp(30px, 5vw, 54px); max-width: 680px; }
+  .hero { width: min(560px, 100%); display: flex; flex-direction: column; align-items: center; }
+  .hero :global(.status), .hero :global(.status .items) { justify-content: center; }
   .eyebrow { font-size: 1.4rem; margin: 0 0 6px; }
   /* the name is the signature SVG — it writes itself, then wipes, on a loop */
   .name { margin: 0; line-height: 0; }
   .name__sig {
     display: block;
     width: 100%;
-    max-width: 640px;
+    max-width: 560px;
     height: auto;
-    /* nudge left so the F's swash lines up with the text below it */
-    margin-left: -1.5%;
   }
   .tagline {
     margin: 0.5rem 0 1.3rem;
-    max-width: 26ch;
+    max-width: 30ch;
     font-size: clamp(1.15rem, 2.4vw, 1.5rem);
     color: var(--ink-soft);
     font-weight: 300;

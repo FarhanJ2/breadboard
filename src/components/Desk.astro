@@ -1,0 +1,694 @@
+---
+/**
+ * Desk — the home page hero as a desktop left out on the workbench.
+ *
+ * Floating windows play real clips; each one opens its writeup (double-click, or
+ * the filename under it). Everything with [data-drag] can be moved. The red
+ * light (or dropping a window on the trash) throws a window away, the yellow one
+ * window-shades it, and clicking the trash puts everything back. Folders open
+ * Finder-style windows listing the projects / posts.
+ *
+ * The centre copy comes in through the default slot.
+ */
+import { withBase } from "../lib/url";
+
+interface Entry { title: string; href: string; meta?: string }
+interface Props {
+  projects: Entry[];
+  posts: Entry[];
+}
+const { projects, posts } = Astro.props;
+
+// x/y are % of the desk, w is px. m* are the phone layout.
+const clips = [
+  {
+    file: "rebuilt-2026.mov", src: "/contact/C0294.web.mp4", poster: "/contact/C0294.poster.800w.webp",
+    href: "/projects/frc-rebuilt-2026", ratio: "16/9",
+    x: 3, y: 7, w: 290, r: -2, mx: 2, my: 1, mw: 200,
+  },
+  {
+    file: "led-prototype.mov", src: "/projects/driver-station/led-prototype.web.mp4",
+    poster: "/projects/driver-station/led-prototype.poster.800w.webp",
+    href: "/projects/driver-station", ratio: "9/16",
+    x: 6, y: 47, w: 150, r: 1.5, mx: 64, my: 3, mw: 110,
+  },
+  {
+    file: "ds-lights.mov", src: "/projects/driver-station/lights.web.mp4",
+    poster: "/projects/driver-station/lights.poster.800w.webp",
+    href: "/projects/driver-station", ratio: "16/9",
+    x: 36, y: 2, w: 220, r: 1, mx: 3, my: 65, mw: 170,
+  },
+  {
+    file: "ei-award-2026.mov", src: "/contact/awards-2026-04-12.web.mp4",
+    poster: "/contact/awards-2026-04-12.poster.800w.webp",
+    href: "/projects/frc-rebuilt-2026", ratio: "16/9",
+    x: 71, y: 6, w: 290, r: 2, mx: 3, my: 78, mw: 175,
+  },
+  {
+    file: "shoot-on-the-move.mov", src: "/projects/frc-rebuilt-2026/sotm-demo.mp4",
+    poster: "/projects/frc-rebuilt-2026/sotm-demo-poster.800w.webp",
+    href: "/projects/frc-rebuilt-2026", ratio: "16/9",
+    x: 19, y: 71, w: 250, r: -1.5, mx: 37, my: 89, mw: 175,
+  },
+  {
+    file: "reefscape-2025.mov", src: "/projects/frc-reefscape-2025/3522593ce7d4465e96cb51e8f1a15ec3.web.mp4",
+    poster: "/projects/frc-reefscape-2025/3522593ce7d4465e96cb51e8f1a15ec3.poster.800w.webp",
+    href: "/projects/frc-reefscape-2025", ratio: "16/9",
+    x: 70, y: 60, w: 270, r: -2, mx: 51, my: 76, mw: 175,
+  },
+  {
+    file: "nyenye.mov", src: "/desk/nyenye.web.mp4", poster: "/desk/nyenye.poster.jpg", ratio: "1/1",
+    x: 57, y: 4, w: 160, r: 3, mx: 3, my: 89, mw: 115,
+  },
+  {
+    file: "kat.mov", src: "/desk/cat.web.mp4", poster: "/desk/cat.poster.jpg", ratio: "360/336",
+    x: 55, y: 77, w: 150, r: -3, mx: 4, my: 13, mw: 112,
+  },
+];
+
+const pos = (o: { x: number; y: number; w?: number; r?: number; mx: number; my: number; mw?: number }) =>
+  [
+    `--x:${o.x}%`, `--y:${o.y}%`, `--mx:${o.mx}%`, `--my:${o.my}%`,
+    o.w ? `--w:${o.w}px` : "", o.mw ? `--mw:${o.mw}px` : "", `--r:${o.r ?? 0}deg`,
+  ].filter(Boolean).join(";");
+
+const faces = [
+  { t: "¯\\_(ツ)_/¯", x: 12, y: 44, mx: 70, my: 28 },
+  { t: "(¬_¬)", x: 31, y: 80, mx: 6, my: 97 },
+  { t: "\\(^o^)/", x: 28, y: 26, mx: 12, my: 99 },
+  { t: "( •_•)>⌐■-■", x: 39, y: 93, mx: 40, my: 67 },
+];
+---
+
+<section class="desk" data-desk aria-label="Desktop">
+  <div class="desk__center">
+    <slot />
+  </div>
+
+  <div class="desk__stage" aria-hidden="false">
+    {faces.map((f) => (
+      <span class="face" style={pos({ ...f, r: 0 })} aria-hidden="true">{f.t}</span>
+    ))}
+
+    {clips.map((c, i) => (
+      <figure class="item win" data-drag data-win data-href={c.href && withBase(c.href)} style={`${pos(c)};--i:${i}`}>
+        <div class="win__bar" data-handle>
+          <button class="light light--close" type="button" data-close aria-label={`Throw ${c.file} in the trash`}></button>
+          <button class="light light--shade" type="button" data-shade aria-label={`Collapse ${c.file}`}></button>
+        </div>
+        <div class="win__body" style={`aspect-ratio:${c.ratio}`}>
+          <video
+            muted loop playsinline preload="none"
+            poster={withBase(c.poster)}
+            data-src={withBase(c.src)}
+            aria-hidden="true"
+          ></video>
+        </div>
+        <figcaption>{c.href ? <a href={withBase(c.href)}>{c.file}</a> : c.file}</figcaption>
+      </figure>
+    ))}
+
+    <button class="item icon" type="button" data-drag data-open="projects" style={pos({ x: 21, y: 40, mx: 4, my: 25 })}>
+      <span class="folder" aria-hidden="true"></span>
+      <span class="icon__label">projects</span>
+    </button>
+    <button class="item icon" type="button" data-drag data-open="writing" style={pos({ x: 88, y: 36, mx: 30, my: 25 })}>
+      <span class="folder" aria-hidden="true"></span>
+      <span class="icon__label">writing</span>
+    </button>
+
+    <div class="item sticker" data-drag data-handle style={pos({ x: 88.5, y: 3, r: 9, mx: 40, my: 14 })} aria-hidden="true">
+      <span class="sticker__hello">HELLO</span>
+      <span class="sticker__sub">my name is</span>
+      <span class="sticker__name">2601</span>
+    </div>
+
+    <button type="button" class="item phone" data-drag data-handle data-phone-src style={pos({ x: 94.6, y: 72, r: 4, mx: 77, my: 26.5 })} aria-label="Answer the ringing phone">
+      <img src={withBase("/desk/phone.webp")} alt="" width="440" height="762" draggable="false" decoding="async" />
+    </button>
+
+    <aside class="item note" data-drag data-handle style={pos({ x: 76, y: 38, r: -3, mx: 56, my: 63 })}>
+      <p>drag stuff around.</p>
+      <p>double-click a clip to read about it.</p>
+      <p>made a mess? empty the trash.</p>
+    </aside>
+
+    <button class="item trash" type="button" data-trash style={pos({ x: 3, y: 86, mx: 55, my: 25 })} aria-label="Trash is empty">
+      <span class="can" aria-hidden="true"><span class="can__lid"></span><span class="can__bin"></span></span>
+      <span class="icon__label">trash</span>
+    </button>
+
+    <div class="item win win--finder" data-drag data-finder="projects" hidden style={pos({ x: 4, y: 22, mx: 6, my: 30 })}>
+      <div class="win__bar" data-handle>
+        <button class="light light--close" type="button" data-dismiss aria-label="Close projects"></button>
+        <span class="win__title">projects</span>
+      </div>
+      <ul class="finder">
+        {projects.map((p) => (
+          <li><a href={p.href}><span class="doc" aria-hidden="true"></span><span>{p.title}</span>{p.meta && <em>{p.meta}</em>}</a></li>
+        ))}
+      </ul>
+    </div>
+    <div class="item win win--finder" data-drag data-finder="writing" hidden style={pos({ x: 66, y: 44, mx: 6, my: 40 })}>
+      <div class="win__bar" data-handle>
+        <button class="light light--close" type="button" data-dismiss aria-label="Close writing"></button>
+        <span class="win__title">writing</span>
+      </div>
+      <ul class="finder">
+        {posts.map((p) => (
+          <li><a href={p.href}><span class="doc doc--md" aria-hidden="true"></span><span>{p.title}</span>{p.meta && <em>{p.meta}</em>}</a></li>
+        ))}
+      </ul>
+    </div>
+  </div>
+</section>
+
+<style>
+  .desk {
+    --win-bar: #1c202b;
+    --win-edge: #2c3244;
+    position: relative;
+    min-height: max(780px, calc(100svh - 90px));
+    margin-inline: auto;
+    max-width: 1440px;
+    isolation: isolate;
+  }
+
+  /* --- centre copy --- */
+  .desk__center {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 0 24px 40px;
+    pointer-events: none;
+    z-index: 1;
+  }
+  .desk__center > :global(*) { pointer-events: auto; }
+
+  .desk__stage { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
+  .item {
+    position: absolute;
+    left: var(--x);
+    top: var(--y);
+    pointer-events: auto;
+    transform: translate(var(--dx, 0px), var(--dy, 0px)) rotate(var(--r, 0deg));
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .item.is-dragging { cursor: grabbing; }
+
+  /* --- windows --- */
+  .win {
+    margin: 0;
+    width: var(--w, 260px);
+    touch-action: auto;
+  }
+  .win > .win__bar,
+  .win > .win__body,
+  .win > .finder {
+    background: var(--bg-raise);
+    border-inline: 1px solid var(--win-edge);
+  }
+  .win__bar {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    height: 24px;
+    padding: 0 9px;
+    border-top: 1px solid var(--win-edge);
+    border-radius: 9px 9px 0 0;
+    background: var(--win-bar) !important;
+    cursor: grab;
+    touch-action: none;
+  }
+  .win__body {
+    border-bottom: 1px solid var(--win-edge);
+    border-radius: 0 0 9px 9px;
+    padding: 0 5px 5px;
+    overflow: hidden;
+    transition: height 0.28s cubic-bezier(0.3, 0.7, 0.2, 1);
+  }
+  .win__body video {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 4px;
+    background: var(--bg-inset);
+    pointer-events: none;
+  }
+  .win__bar, .win__body { box-shadow: 0 22px 48px -20px rgba(0, 0, 0, 0.85); }
+
+  /* window-shade: collapse to the titlebar */
+  .win.is-shaded .win__body { height: 0; padding-bottom: 0; border-bottom-width: 0; }
+  .win.is-shaded .win__bar { border-radius: 9px; border-bottom: 1px solid var(--win-edge); }
+
+  .win figcaption {
+    margin-top: 7px;
+    text-align: center;
+    font-family: var(--font-body);
+    font-size: 0.82rem;
+    line-height: 1.2;
+  }
+  .win figcaption, .win figcaption a { color: var(--ink-faint); }
+  .win figcaption a:hover { color: var(--amber); text-decoration: none; }
+
+  .light {
+    width: 11px;
+    height: 11px;
+    padding: 0;
+    border-radius: 50%;
+    border: 0;
+    box-shadow: inset 0 0 0 0.5px rgba(0, 0, 0, 0.35);
+    cursor: pointer;
+    position: relative;
+  }
+  .light--close { background: #ff5f57; }
+  .light--shade { background: #febc2e; }
+  /* the glyph only shows once you're near, like the real thing */
+  .light::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    font: 700 9px/11px system-ui, sans-serif;
+    color: rgba(0, 0, 0, 0.6);
+    opacity: 0;
+  }
+  .light--close::after { content: "×"; }
+  .light--shade::after { content: "−"; }
+  .win__bar:hover .light::after { opacity: 1; }
+  .light:focus-visible { outline-offset: 2px; border-radius: 50%; }
+
+  .win__title {
+    flex: 1;
+    margin-right: 18px;
+    text-align: center;
+    font-size: 0.8rem;
+    color: var(--ink-soft);
+  }
+
+  /* --- finder windows --- */
+  .win--finder { width: 300px; }
+  .win--finder[hidden] { display: none; }
+  .finder {
+    list-style: none;
+    margin: 0;
+    padding: 6px;
+    border-bottom: 1px solid var(--win-edge);
+    border-radius: 0 0 9px 9px;
+    box-shadow: 0 26px 60px -20px rgba(0, 0, 0, 0.9);
+  }
+  .finder a {
+    display: grid;
+    grid-template-columns: 18px 1fr;
+    column-gap: 10px;
+    align-items: center;
+    padding: 7px 8px;
+    border-radius: 6px;
+    color: var(--ink);
+    font-size: 0.95rem;
+    line-height: 1.25;
+  }
+  .finder a:hover, .finder a:focus-visible { background: color-mix(in srgb, var(--blueprint) 22%, transparent); text-decoration: none; }
+  .finder em { grid-column: 2; font-size: 0.78rem; color: var(--ink-faint); font-style: normal; }
+  .doc {
+    width: 15px;
+    height: 19px;
+    border-radius: 2px;
+    background: linear-gradient(225deg, transparent 5px, #d8dbe4 5px);
+    position: relative;
+  }
+  .doc--md { background: linear-gradient(225deg, transparent 5px, var(--blueprint) 5px); }
+
+  /* --- desktop icons --- */
+  .icon, .trash {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+    padding: 6px 8px;
+    background: none;
+    border: 0;
+    border-radius: 8px;
+    color: var(--ink-soft);
+    font: inherit;
+    cursor: pointer;
+    touch-action: none;
+  }
+  .icon:hover .icon__label, .trash:hover .icon__label { background: color-mix(in srgb, var(--blueprint) 30%, transparent); color: var(--ink); }
+  .icon__label { font-size: 0.82rem; padding: 0 6px; border-radius: 4px; line-height: 1.4; }
+
+  .folder {
+    width: 52px;
+    height: 40px;
+    position: relative;
+    border-radius: 3px 5px 5px 5px;
+    background: linear-gradient(#6fb6ff, #3f8fe6);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  }
+  .folder::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: -5px;
+    width: 20px;
+    height: 7px;
+    border-radius: 3px 3px 0 0;
+    background: #4d9cf0;
+  }
+  .icon.is-open .folder { background: linear-gradient(#8cc6ff, #5aa2f0); }
+
+  /* --- trash --- */
+  .can { position: relative; width: 38px; height: 46px; display: block; }
+  .can__lid {
+    position: absolute;
+    left: -2px; right: -2px; top: 0;
+    height: 6px;
+    border-radius: 3px;
+    background: #c9ccd4;
+    transform-origin: 10% 100%;
+    transition: transform 0.2s ease;
+  }
+  .can__bin {
+    position: absolute;
+    left: 2px; right: 2px; top: 8px; bottom: 0;
+    border-radius: 2px 2px 7px 7px;
+    background:
+      repeating-linear-gradient(90deg, transparent 0 6px, rgba(0, 0, 0, 0.14) 6px 7px),
+      linear-gradient(#e2e4ea, #a9adb8);
+  }
+  .trash.is-full .can__bin::after {
+    content: "";
+    position: absolute;
+    left: 3px; right: 3px; top: -6px;
+    height: 10px;
+    border-radius: 50% 50% 3px 3px;
+    background:
+      radial-gradient(circle at 25% 60%, #ff5f57 0 3px, transparent 3.5px),
+      radial-gradient(circle at 60% 40%, #7ee0a8 0 3px, transparent 3.5px),
+      radial-gradient(circle at 80% 70%, #6fb6ff 0 3px, transparent 3.5px),
+      #f1f2f5;
+  }
+  .trash.is-hot .can__lid { transform: rotate(-24deg) translateY(-3px); }
+  .trash.is-hot .icon__label { background: color-mix(in srgb, #ff5f57 40%, transparent); color: var(--ink); }
+
+  /* --- sticker + note + faces --- */
+  .sticker {
+    width: 104px;
+    border-radius: 7px;
+    background: #e5352b;
+    color: #fff;
+    text-align: center;
+    padding: 6px 0 7px;
+    box-shadow: 0 10px 22px -10px rgba(0, 0, 0, 0.7);
+    cursor: grab;
+    touch-action: none;
+    font-family: system-ui, sans-serif;
+    line-height: 1;
+  }
+  .sticker__hello { display: block; font-weight: 800; font-size: 14px; letter-spacing: 0.06em; }
+  .sticker__sub { display: block; font-size: 8px; margin-top: 2px; }
+  .sticker__name {
+    display: block;
+    margin-top: 6px;
+    padding: 5px 0 3px;
+    background: #fff;
+    color: #1d1d22;
+    font-family: var(--font-hand);
+    font-size: 26px;
+    font-weight: 700;
+  }
+
+  .note {
+    width: 158px;
+    padding: 14px 14px 16px;
+    background: #fde68a;
+    color: #3b3212;
+    font-family: var(--font-hand);
+    font-size: 1.18rem;
+    line-height: 1.15;
+    box-shadow: 0 14px 26px -14px rgba(0, 0, 0, 0.85);
+    clip-path: polygon(0 0, 100% 0, 100% 88%, 88% 100%, 0 100%);
+    cursor: grab;
+    touch-action: none;
+  }
+  .note p { margin: 0 0 6px; }
+  .note p:last-child { margin: 0; }
+
+  /* no window: the phone just lies on the desk and rings, nonstop */
+  .phone {
+    width: 122px;
+    padding: 0;
+    border: 0;
+    background: none;
+    cursor: pointer;
+    touch-action: none;
+    left: min(var(--x), calc(100% - 156px));
+  }
+  .phone:focus-visible { outline-offset: 6px; border-radius: 18px; }
+  .phone img { display: block; width: 100%; height: auto; transform-origin: 50% 70%; }
+  @media (prefers-reduced-motion: no-preference) {
+    .phone img { animation: ring 0.24s ease-in-out infinite; }
+    .phone.is-answered img { animation: none; }
+  }
+  @keyframes ring {
+    0%, 100% { transform: translate(-2px, 0) rotate(-7deg); }
+    50% { transform: translate(2px, -1px) rotate(7deg); }
+  }
+
+  .face {
+    position: absolute;
+    left: var(--x);
+    top: var(--y);
+    font-size: 1.05rem;
+    color: var(--ink-faint);
+    white-space: nowrap;
+    pointer-events: none;
+  }
+
+  /* --- the one orchestrated moment: windows land one after another --- */
+  @media (prefers-reduced-motion: no-preference) {
+    .desk.is-live .item {
+      animation: land 0.5s cubic-bezier(0.2, 0.9, 0.25, 1.25) both;
+      animation-delay: calc(0.12s + var(--i, 6) * 0.07s);
+    }
+    .item.is-back { animation: land 0.4s cubic-bezier(0.2, 0.9, 0.25, 1.25) both !important; animation-delay: 0s !important; }
+    .item.is-trashing {
+      animation: none !important;
+      transition: transform 0.32s cubic-bezier(0.5, 0, 0.8, 0.4), opacity 0.32s ease;
+      opacity: 0;
+    }
+  }
+  @keyframes land {
+    from { opacity: 0; scale: 0.86; }
+    to { opacity: 1; scale: 1; }
+  }
+
+  /* --- phones: taller desk, stuff above and below the copy --- */
+  @media (max-width: 760px) {
+    .desk { min-height: 1280px; }
+    .desk__center { padding-bottom: 0; }
+    .item, .face { left: var(--mx); top: var(--my); }
+    .win { width: var(--mw, 170px); }
+    .win--finder { width: min(300px, 88vw); }
+    .face { display: none; }
+    .face:nth-of-type(2) { display: block; }
+    .note { width: 140px; font-size: 1.05rem; }
+    .phone { width: 80px; }
+  }
+</style>
+
+<script>
+  let teardown: (() => void) | null = null;
+
+  function setupDesk() {
+    teardown?.();
+    teardown = null;
+    const desk = document.querySelector<HTMLElement>("[data-desk]");
+    if (!desk) return;
+    const trash = desk.querySelector<HTMLButtonElement>("[data-trash]")!;
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const off: Array<() => void> = [];
+    const on = <K extends keyof HTMLElementEventMap>(el: EventTarget, ev: K | string, fn: (e: any) => void, opts?: AddEventListenerOptions) => {
+      el.addEventListener(ev, fn, opts);
+      off.push(() => el.removeEventListener(ev, fn, opts));
+    };
+
+    let top = 10;
+    const raise = (el: HTMLElement) => { el.style.zIndex = String(++top); };
+    const trashed = new Set<HTMLElement>();
+
+    requestAnimationFrame(() => desk.classList.add("is-live"));
+
+    // --- clips play only while on screen, never under reduced motion ---
+    const videos = [...desk.querySelectorAll<HTMLVideoElement>("video[data-src]")];
+    const io = new IntersectionObserver((entries) => {
+      for (const e of entries) {
+        const v = e.target as HTMLVideoElement;
+        if (e.isIntersecting && !reduce && !v.closest(".is-trashed, .is-shaded")) {
+          if (!v.src) v.src = v.dataset.src!;
+          v.play().catch(() => {});
+        } else v.pause();
+      }
+    }, { threshold: 0.2 });
+    if (!reduce) videos.forEach((v) => io.observe(v));
+    off.push(() => io.disconnect());
+
+    // --- trash ---
+    const syncTrash = () => {
+      trash.classList.toggle("is-full", trashed.size > 0);
+      trash.setAttribute("aria-label", trashed.size ? `Put back ${trashed.size} thrown-away window${trashed.size > 1 ? "s" : ""}` : "Trash is empty");
+    };
+    const throwAway = (win: HTMLElement) => {
+      win.querySelector("video")?.pause();
+      const w = win.getBoundingClientRect();
+      const t = trash.getBoundingClientRect();
+      const dx = parseFloat(win.style.getPropertyValue("--dx") || "0") + (t.x + t.width / 2) - (w.x + w.width / 2);
+      const dy = parseFloat(win.style.getPropertyValue("--dy") || "0") + (t.y + t.height / 2) - (w.y + w.height / 2);
+      win.classList.remove("is-back");
+      win.classList.add("is-trashing");
+      win.style.transform = `translate(${dx}px, ${dy}px) scale(0.08)`;
+      trashed.add(win);
+      syncTrash();
+      setTimeout(() => {
+        if (!trashed.has(win)) return; // put back before it landed
+        win.classList.add("is-trashed");
+        win.hidden = true;
+      }, reduce ? 0 : 320);
+    };
+    const putBack = () => {
+      for (const win of trashed) {
+        win.hidden = false;
+        win.classList.remove("is-trashing", "is-trashed", "is-shaded");
+        win.style.transform = "";
+        win.style.removeProperty("--dx");
+        win.style.removeProperty("--dy");
+        void win.offsetWidth; // restart the landing animation
+        win.classList.add("is-back");
+        raise(win);
+        const v = win.querySelector("video");
+        if (v && !reduce && v.src) v.play().catch(() => {});
+      }
+      trashed.clear();
+      syncTrash();
+    };
+    on(trash, "click", () => { if (trashed.size) putBack(); });
+
+    // --- window buttons ---
+    on(desk, "click", (e: MouseEvent) => {
+      const t = e.target as HTMLElement;
+      const win = t.closest<HTMLElement>("[data-win]");
+      if (t.closest("[data-close]") && win) throwAway(win);
+      else if (t.closest("[data-shade]") && win) {
+        const shaded = win.classList.toggle("is-shaded");
+        const v = win.querySelector("video");
+        if (v) shaded ? v.pause() : !reduce && v.src && v.play().catch(() => {});
+        t.closest("button")!.setAttribute("aria-label", `${shaded ? "Expand" : "Collapse"} ${win.querySelector("figcaption")?.textContent}`);
+      } else if (t.closest("[data-dismiss]")) {
+        const f = t.closest<HTMLElement>("[data-finder]")!;
+        f.hidden = true;
+        desk.querySelector(`[data-open="${f.dataset.finder}"]`)?.classList.remove("is-open");
+      }
+    });
+    on(desk, "dblclick", (e: MouseEvent) => {
+      const t = e.target as HTMLElement;
+      if (t.closest("button, a, .win__bar")) return;
+      const win = t.closest<HTMLElement>("[data-win]");
+      if (win?.dataset.href) location.href = win.dataset.href;
+    });
+
+    const openFolder = (icon: HTMLElement) => {
+      const f = desk.querySelector<HTMLElement>(`[data-finder="${icon.dataset.open}"]`);
+      if (!f) return;
+      f.hidden = false;
+      f.classList.remove("is-back");
+      void f.offsetWidth;
+      f.classList.add("is-back");
+      raise(f);
+      icon.classList.add("is-open");
+      f.querySelector<HTMLElement>("a")?.focus({ preventScroll: true });
+    };
+
+    // --- dragging ---
+    let drag: null | {
+      el: HTMLElement; id: number; sx: number; sy: number; ox: number; oy: number; moved: boolean;
+      bounds: { minX: number; maxX: number; minY: number; maxY: number };
+    } = null;
+
+    on(desk, "pointerdown", (e: PointerEvent) => {
+      if (e.button !== 0) return;
+      const t = e.target as HTMLElement;
+      const el = t.closest<HTMLElement>("[data-drag]");
+      if (!el || t.closest(".light, a")) return;
+      // on touch, only handles drag — a video body has to stay scrollable
+      if (e.pointerType === "touch" && !t.closest("[data-handle], .icon")) return;
+      raise(el);
+      const r = el.getBoundingClientRect();
+      const d = desk.getBoundingClientRect();
+      const ox = parseFloat(el.style.getPropertyValue("--dx") || "0");
+      const oy = parseFloat(el.style.getPropertyValue("--dy") || "0");
+      const keep = 40; // px of the item that must stay on the desk
+      drag = {
+        el, id: e.pointerId, sx: e.clientX, sy: e.clientY, ox, oy, moved: false,
+        bounds: {
+          minX: ox + (d.left - r.right + keep), maxX: ox + (d.right - r.left - keep),
+          minY: oy + (d.top - r.top), maxY: oy + (d.bottom - r.top - keep),
+        },
+      };
+    });
+    on(window, "pointermove", (e: PointerEvent) => {
+      if (!drag || e.pointerId !== drag.id) return;
+      const mx = e.clientX - drag.sx;
+      const my = e.clientY - drag.sy;
+      if (!drag.moved) {
+        if (Math.hypot(mx, my) < 4) return;
+        drag.moved = true;
+        drag.el.classList.add("is-dragging");
+        drag.el.setPointerCapture?.(e.pointerId);
+      }
+      const b = drag.bounds;
+      drag.el.style.setProperty("--dx", `${Math.min(b.maxX, Math.max(b.minX, drag.ox + mx))}px`);
+      drag.el.style.setProperty("--dy", `${Math.min(b.maxY, Math.max(b.minY, drag.oy + my))}px`);
+      if (drag.el.matches("[data-win]")) {
+        const t = trash.getBoundingClientRect();
+        trash.classList.toggle("is-hot", e.clientX > t.left - 12 && e.clientX < t.right + 12 && e.clientY > t.top - 12 && e.clientY < t.bottom + 12);
+      }
+    });
+    const endDrag = (e: PointerEvent) => {
+      if (!drag || e.pointerId !== drag.id) return;
+      const { el, moved } = drag;
+      drag = null;
+      el.classList.remove("is-dragging");
+      if (moved && trash.classList.contains("is-hot")) throwAway(el);
+      trash.classList.remove("is-hot");
+      // a drag that ends on a folder isn't a click
+      if (moved) {
+        const swallow = (ev: Event) => { ev.stopPropagation(); ev.preventDefault(); };
+        el.addEventListener("click", swallow, { capture: true, once: true });
+        setTimeout(() => el.removeEventListener("click", swallow, { capture: true }), 0);
+      }
+    };
+    on(window, "pointerup", endDrag);
+    on(window, "pointercancel", endDrag);
+
+    desk.querySelectorAll<HTMLElement>("[data-open]").forEach((icon) => on(icon, "click", () => openFolder(icon)));
+
+    // the phone: picking it up hands over to DeskPhone; declining the call bins it
+    const phone = desk.querySelector<HTMLElement>("[data-phone-src]");
+    if (phone) on(phone, "click", () => document.dispatchEvent(new CustomEvent("desk:phone", { detail: phone.querySelector("img") ?? phone })));
+    on(document, "desk:throw", (e: CustomEvent<HTMLElement>) => {
+      const el = e.detail.closest<HTMLElement>("[data-drag]");
+      if (el && desk.contains(el)) throwAway(el);
+    });
+
+    teardown = () => off.forEach((f) => f());
+  }
+
+  document.addEventListener("astro:page-load", setupDesk);
+</script>

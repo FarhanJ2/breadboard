@@ -1,0 +1,738 @@
+---
+/**
+ * DeskPhone — what you get when you pick up the ringing phone on the Desk.
+ *
+ * A <dialog> holding a phone: first an incoming call from me, then (on accept) a
+ * tiny home screen with four apps. Photos is the real camera roll from
+ * public/contact, Messages is a text thread you can reply to with canned
+ * chips, Notes is the "currently" list, Contacts is the links in channels.ts.
+ *
+ * Talks to the Desk with two document events: it listens for `desk:phone`
+ * (the desk phone was clicked; detail = that element, so the phone can zoom up
+ * out of it) and fires `desk:throw` on decline so the Desk bins the phone.
+ */
+import { channels } from "../lib/channels";
+import { discoverReel } from "../lib/images.mjs";
+import { imageAttrs, withBase } from "../lib/url";
+
+interface Props {
+  status: string[];
+}
+const { status } = Astro.props;
+
+const photos = await Promise.all(
+  discoverReel("/contact")
+    .filter((s) => s.type === "image")
+    .map((s) => imageAttrs(s.src, "(max-width: 420px) 90vw, 360px")),
+);
+const wallpaper = withBase("/projects/frc-rebuilt-2026/robot-led.800w.webp");
+
+// canned replies in Messages: what you tap -> what I say back
+const replies = [
+  {
+    ask: "what are you building?",
+    say: ["right now: Portal in Unity, and a GTSAM pose estimator running on an Orange Pi"],
+    link: { label: "all my projects", href: withBase("/projects") },
+  },
+  {
+    ask: "got anything to read?",
+    say: ["I write up builds when they're done, or when they break in an interesting way"],
+    link: { label: "the log", href: withBase("/blog") },
+  },
+  {
+    ask: "how do I reach you?",
+    say: ["easiest is GitHub or LinkedIn, both are in Contacts"],
+    link: { label: "connect", href: withBase("/connect") },
+  },
+];
+---
+
+<dialog class="ph" aria-label="Phone" data-phone>
+  <button class="ph__close" type="button" data-ph-close aria-label="Put the phone down">×</button>
+
+  <div class="ph__device" data-ph-device>
+    <div class="ph__screen" data-screen="call">
+      <span class="ph__island" aria-hidden="true"></span>
+
+      <!-- incoming call -->
+      <section class="call" data-view="call">
+        <p class="call__kind">incoming call</p>
+        <img class="call__face" src={withBase("/desk/caller.webp")} alt="" width="240" height="240" />
+        <h2 class="call__name">farhan jamil</h2>
+        <p class="call__sub">mobile</p>
+        <div class="call__actions">
+          <button type="button" class="call__btn call__btn--no" data-ph-decline>
+            <span aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="26" height="26"><path fill="currentColor" d="M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .39-.23.74-.56.9-.98.49-1.87 1.12-2.66 1.85a1 1 0 0 1-1.41-.02L.29 13.08a1 1 0 0 1 0-1.41C3.34 8.78 7.46 7 12 7s8.66 1.78 11.71 4.67a1 1 0 0 1 0 1.41l-2.48 2.48a1 1 0 0 1-1.41.02 11.3 11.3 0 0 0-2.67-1.85 1 1 0 0 1-.56-.9v-3.1C15.15 9.25 13.6 9 12 9Z"/></svg>
+            </span>
+            decline
+          </button>
+          <button type="button" class="call__btn call__btn--yes" data-ph-accept>
+            <span aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="26" height="26"><path fill="currentColor" d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25c1.12.37 2.33.57 3.6.57a1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.57a1 1 0 0 1-.25 1L6.6 10.8Z"/></svg>
+            </span>
+            accept
+          </button>
+        </div>
+      </section>
+
+      <!-- home screen -->
+      <section class="home" data-view="home" hidden style={`--wall:url(${wallpaper})`}>
+        <div class="bar">
+          <span class="bar__time" data-clock>9:41</span>
+          <span class="bar__call" data-call-timer>0:00</span>
+        </div>
+        <div class="apps">
+          <button type="button" class="app" data-app="photos">
+            <span class="app__icon app__icon--photos" aria-hidden="true">
+              <svg viewBox="0 0 40 40"><g transform="translate(20 20)">{[0,45,90,135,180,225,270,315].map((a, i) => <ellipse rx="5" ry="10" cy="-8" transform={`rotate(${a})`} fill={["#f5c242","#f39a2b","#ec5b5b","#c85bd6","#6b7bf0","#43b3f0","#4cc970","#a7d84c"][i]} opacity="0.85" />)}</g></svg>
+            </span>
+            <span class="app__name">Photos</span>
+          </button>
+          <button type="button" class="app" data-app="messages">
+            <span class="app__icon app__icon--messages" aria-hidden="true">
+              <svg viewBox="0 0 40 40"><path fill="#fff" d="M20 9c-7.2 0-13 4.7-13 10.5 0 3.3 1.9 6.3 4.9 8.2-.3 1.6-1.2 3.2-2.6 4.3 2.6-.1 4.8-1.1 6.4-2.4 1.4.3 2.8.4 4.3.4 7.2 0 13-4.7 13-10.5S27.2 9 20 9Z"/></svg>
+            </span>
+            <span class="app__name">Messages</span>
+          </button>
+          <button type="button" class="app" data-app="notes">
+            <span class="app__icon app__icon--notes" aria-hidden="true">
+              <svg viewBox="0 0 40 40"><rect width="40" height="11" fill="#f5c242"/><g stroke="#d9d4c3" stroke-width="1.4"><path d="M7 19h26M7 25h26M7 31h18"/></g></svg>
+            </span>
+            <span class="app__name">Notes</span>
+          </button>
+          <button type="button" class="app" data-app="contacts">
+            <span class="app__icon app__icon--contacts" aria-hidden="true">
+              <svg viewBox="0 0 40 40"><circle cx="20" cy="16" r="6" fill="#8e8e93"/><path fill="#8e8e93" d="M9 31c1.5-5 5.6-8 11-8s9.5 3 11 8Z"/></svg>
+            </span>
+            <span class="app__name">Contacts</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- Photos -->
+      <section class="appview" data-view="photos" hidden>
+        <header class="appbar">
+          <button type="button" class="appbar__back" data-ph-back>Home</button>
+          <h3>Photos</h3>
+          <span></span>
+        </header>
+        <div class="grid" data-grid>
+          {photos.map((p, i) => (
+            <button type="button" class="grid__cell" data-photo={i} aria-label={`Photo ${i + 1} of ${photos.length}`}>
+              <img src={p.src} srcset={p.srcset} sizes="120px" alt="" loading="lazy" decoding="async" />
+            </button>
+          ))}
+        </div>
+        <div class="viewer" data-viewer hidden>
+          <header class="appbar appbar--dark">
+            <button type="button" class="appbar__back" data-viewer-back>Library</button>
+            <h3 data-viewer-count></h3>
+            <span></span>
+          </header>
+          <div class="viewer__strip" data-strip>
+            {photos.map((p) => (
+              <img src={p.src} srcset={p.srcset} sizes={p.sizes} alt="" loading="lazy" decoding="async" />
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <!-- Messages -->
+      <section class="appview appview--light" data-view="messages" hidden>
+        <header class="appbar appbar--light">
+          <button type="button" class="appbar__back" data-ph-back>Home</button>
+          <h3 class="who"><img src={withBase("/desk/caller.webp")} alt="" width="28" height="28" />farhan</h3>
+          <span></span>
+        </header>
+        <div class="thread" data-thread aria-live="polite">
+          <p class="msg msg--in" data-intro>hey, you picked up</p>
+          <p class="msg msg--in" data-intro>I'm farhan. Townsend Harris '26, now RPI for ECSE/CSE</p>
+          <p class="msg msg--in" data-intro>I spent high school building robots with the Steel Hawks, FRC team 2601</p>
+          <p class="msg msg--in" data-intro>ask me something</p>
+        </div>
+        <div class="chips" data-chips>
+          {replies.map((r, i) => (
+            <button type="button" class="chip" data-reply={i}>{r.ask}</button>
+          ))}
+        </div>
+        {replies.map((r, i) => (
+          <template data-answer={i}>
+            {r.say.map((line) => <p class="msg msg--in">{line}</p>)}
+            <p class="msg msg--in msg--link"><a href={r.link.href}>{r.link.label}</a></p>
+          </template>
+        ))}
+      </section>
+
+      <!-- Notes -->
+      <section class="appview appview--note" data-view="notes" hidden>
+        <header class="appbar appbar--note">
+          <button type="button" class="appbar__back" data-ph-back>Home</button>
+          <h3></h3>
+          <span></span>
+        </header>
+        <div class="note-body">
+          <h4>currently</h4>
+          <ul>
+            {status.map((s) => <li>{s}</li>)}
+          </ul>
+        </div>
+      </section>
+
+      <!-- Contacts -->
+      <section class="appview appview--light" data-view="contacts" hidden>
+        <header class="appbar appbar--light">
+          <button type="button" class="appbar__back" data-ph-back>Home</button>
+          <h3></h3>
+          <span></span>
+        </header>
+        <div class="card">
+          <img class="card__face" src={withBase("/desk/caller.webp")} alt="" width="240" height="240" />
+          <h4>Farhan Jamil</h4>
+          <p class="card__sub">Steel Hawks 2601 · RPI '30</p>
+          <ul class="card__rows">
+            {channels.map((c) => (
+              <li>
+                <a href={c.href} target={c.ext ? "_blank" : undefined} rel={c.ext ? "noopener" : undefined}>
+                  <span class="card__label">{c.label}</span>
+                  <span class="card__value">{c.value}</span>
+                </a>
+              </li>
+            ))}
+            <li>
+              <a href={withBase("/connect")}>
+                <span class="card__label">more</span>
+                <span class="card__value">the connect page</span>
+              </a>
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <button type="button" class="ph__home" data-ph-home aria-label="Go to the home screen" hidden></button>
+    </div>
+  </div>
+</dialog>
+
+<style>
+  .ph {
+    padding: 0;
+    border: 0;
+    background: none;
+    max-width: none;
+    max-height: none;
+    width: 100vw;
+    height: 100svh;
+    overflow: hidden;
+    color: #fff;
+  }
+  .ph[open] { display: grid; place-items: center; }
+  :global(html.ph-lock) { overflow: hidden; }
+  .ph::backdrop { background: rgba(5, 6, 9, 0.62); }
+
+  .ph__close {
+    position: absolute;
+    top: 18px;
+    right: 22px;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    border: 1px solid var(--line);
+    background: var(--bg-raise);
+    color: var(--ink);
+    font-size: 1.5rem;
+    line-height: 1;
+    cursor: pointer;
+  }
+
+  /* --- the hardware --- */
+  .ph__device {
+    --h: min(760px, 88svh);
+    height: var(--h);
+    aspect-ratio: 9 / 19.5;
+    max-width: 92vw;
+    padding: calc(var(--h) * 0.016);
+    border-radius: calc(var(--h) * 0.075);
+    background: linear-gradient(145deg, #3a3d44, #1c1d21 40%, #2b2d33);
+    box-shadow: 0 40px 90px -30px rgba(0, 0, 0, 0.9), inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  }
+  .ph__screen {
+    position: relative;
+    height: 100%;
+    border-radius: calc(var(--h) * 0.06);
+    overflow: hidden;
+    background: #000;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.35;
+  }
+  .ph__island {
+    position: absolute;
+    z-index: 5;
+    top: 11px;
+    left: 50%;
+    translate: -50% 0;
+    width: 31%;
+    height: 27px;
+    border-radius: 20px;
+    background: #000;
+  }
+  .ph [hidden] { display: none !important; }
+  .ph button { font: inherit; color: inherit; }
+  .ph__home {
+    position: absolute;
+    z-index: 6;
+    bottom: 7px;
+    left: 50%;
+    translate: -50% 0;
+    width: 36%;
+    height: 14px;
+    padding: 0;
+    border: 0;
+    background: none;
+    cursor: pointer;
+  }
+  .ph__home::after {
+    content: "";
+    display: block;
+    height: 5px;
+    margin-top: 5px;
+    border-radius: 3px;
+    background: currentColor;
+    opacity: 0.85;
+  }
+  .ph__screen[data-screen="home"] .ph__home,
+  .ph__screen[data-screen="photos"] .ph__home { color: #fff; }
+  .ph__screen:is([data-screen="messages"], [data-screen="contacts"], [data-screen="notes"]) .ph__home { color: #111; }
+
+  /* --- call --- */
+  .call {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 86px 24px 54px;
+    text-align: center;
+    background:
+      radial-gradient(120% 70% at 50% 0%, #3b3326 0%, transparent 70%),
+      #121214;
+  }
+  .call__kind { margin: 0 0 22px; color: rgba(255, 255, 255, 0.6); font-size: 14px; }
+  .call__face {
+    width: 104px;
+    height: 104px;
+    border-radius: 50%;
+    object-fit: cover;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .call__face { animation: halo 1.6s ease-out infinite; }
+  }
+  @keyframes halo {
+    from { box-shadow: 0 0 0 0 rgba(126, 224, 168, 0.45); }
+    to { box-shadow: 0 0 0 22px rgba(126, 224, 168, 0); }
+  }
+  .call__name { margin: 18px 0 2px; font-weight: 600; font-size: 30px; line-height: 1.1; font-family: inherit; letter-spacing: -0.01em; color: #fff; }
+  .call__sub { margin: 0; color: rgba(255, 255, 255, 0.6); }
+  .call__actions {
+    margin-top: auto;
+    width: 100%;
+    display: flex;
+    justify-content: space-around;
+  }
+  .call__btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 0;
+    border: 0;
+    background: none;
+    cursor: pointer;
+    font-size: 13px !important;
+  }
+  .call__btn > span {
+    display: grid;
+    place-items: center;
+    width: 66px;
+    height: 66px;
+    border-radius: 50%;
+  }
+  .call__btn--no > span { background: #ff3b30; }
+  .call__btn--yes > span { background: #34c759; }
+  .call__btn:hover > span { filter: brightness(1.12); }
+
+  /* --- home --- */
+  .home {
+    height: 100%;
+    padding: 0 18px;
+    background:
+      linear-gradient(rgba(0, 0, 0, 0.35), rgba(0, 0, 0, 0.15) 40%, rgba(0, 0, 0, 0.5)),
+      var(--wall) center / cover;
+  }
+  .bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    height: 50px;
+    padding: 4px 10px 0;
+    font-weight: 600;
+    font-size: 15px;
+  }
+  .bar__call {
+    padding: 2px 9px;
+    border-radius: 12px;
+    background: #34c759;
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+  }
+  .apps {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 18px 10px;
+    padding-top: 22px;
+  }
+  .app {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+    padding: 0;
+    border: 0;
+    background: none;
+    cursor: pointer;
+  }
+  .app__icon {
+    width: 100%;
+    max-width: 58px;
+    aspect-ratio: 1;
+    border-radius: 23%;
+    overflow: hidden;
+    display: block;
+  }
+  .app__icon svg { display: block; width: 100%; height: 100%; }
+  .app__icon--photos { background: #fff; }
+  .app__icon--messages { background: linear-gradient(#67e070, #2fbe45); }
+  .app__icon--notes { background: #fbfaf6; }
+  .app__icon--contacts { background: linear-gradient(#f2f2f4, #d8d8dd); }
+  .app__name { font-size: 11.5px; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6); }
+  .app:active .app__icon { filter: brightness(0.8); }
+
+  /* --- app chrome --- */
+  .appview {
+    position: relative;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    background: #000;
+  }
+  .appview--light { background: #fff; color: #111; }
+  .appview--note { background: #fbfaf6; color: #2a2620; }
+  .appbar {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: end;
+    gap: 8px;
+    padding: 50px 14px 10px;
+    flex: none;
+  }
+  .appbar h3 { margin: 0; font-weight: 600; font-size: 16px; line-height: 1.2; font-family: inherit; text-align: center; }
+  .appbar__back {
+    justify-self: start;
+    padding: 0 0 0 14px;
+    border: 0;
+    background: none;
+    color: #0a84ff !important;
+    cursor: pointer;
+    position: relative;
+  }
+  .appbar__back::before {
+    content: "";
+    position: absolute;
+    left: 2px;
+    top: 50%;
+    width: 8px;
+    height: 8px;
+    border-left: 2px solid currentColor;
+    border-bottom: 2px solid currentColor;
+    transform: translateY(-50%) rotate(45deg);
+  }
+  .appbar--light { background: #f6f6f8; border-bottom: 1px solid #e3e3e6; }
+  .appbar--note .appbar__back { color: #d8a20c !important; }
+  .appbar--dark { position: absolute; inset: 0 0 auto; z-index: 2; background: rgba(0, 0, 0, 0.7); }
+
+  /* Photos */
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 2px;
+    overflow-y: auto;
+    padding-bottom: 30px;
+  }
+  .grid__cell { padding: 0; border: 0; aspect-ratio: 1; cursor: pointer; background: #1a1a1c; }
+  .grid__cell img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .viewer { position: absolute; inset: 0; background: #000; z-index: 3; }
+  .viewer__strip {
+    height: 100%;
+    display: flex;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+  }
+  .viewer__strip::-webkit-scrollbar { display: none; }
+  .viewer__strip img {
+    flex: 0 0 100%;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    scroll-snap-align: center;
+  }
+
+  /* Messages */
+  .thread {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 14px 12px;
+  }
+  .thread :global(.msg) {
+    max-width: 78%;
+    margin: 0;
+    padding: 7px 12px;
+    border-radius: 18px;
+    font-size: 15px;
+    line-height: 1.3;
+  }
+  .msg--in { align-self: flex-start; background: #e9e9eb; color: #111; }
+  .thread :global(.msg--out) { align-self: flex-end; background: #0a84ff; color: #fff; margin-top: 8px; }
+  .msg--link a { color: #0a84ff; text-decoration: underline; text-underline-offset: 2px; }
+  .thread :global(.msg--typing) { display: flex; gap: 4px; padding: 11px 13px; }
+  .thread :global(.msg--typing i) { width: 7px; height: 7px; border-radius: 50%; background: #9a9aa0; }
+  @media (prefers-reduced-motion: no-preference) {
+    .thread :global(.msg--typing i) { animation: blink 1s infinite; }
+    .msg--typing i:nth-child(2) { animation-delay: 0.15s; }
+    .msg--typing i:nth-child(3) { animation-delay: 0.3s; }
+    .msg.is-new { animation: pop 0.22s ease-out both; }
+  }
+  @keyframes blink { 50% { opacity: 0.3; } }
+  @keyframes pop { from { opacity: 0; transform: translateY(6px) scale(0.96); } }
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 10px 12px 34px;
+    border-top: 1px solid #e3e3e6;
+    flex: none;
+  }
+  .chip {
+    padding: 6px 12px;
+    border-radius: 16px;
+    border: 1px solid #0a84ff;
+    background: #fff;
+    color: #0a84ff !important;
+    font-size: 13.5px !important;
+    cursor: pointer;
+  }
+  .chip:disabled { opacity: 0.35; cursor: default; }
+  .who { display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: 12px !important; font-weight: 400 !important; }
+  .who img { border-radius: 50%; object-fit: cover; }
+
+  /* Notes */
+  .note-body { padding: 6px 22px; }
+  .note-body h4 { margin: 0 0 10px; font-weight: 700; font-size: 26px; line-height: 1.1; font-family: inherit; }
+  .note-body ul { margin: 0; padding-left: 20px; }
+  .note-body li { margin-bottom: 8px; font-size: 16px; }
+
+  /* Contacts */
+  .card { padding: 18px 16px; text-align: center; overflow-y: auto; }
+  .card__face { width: 96px; height: 96px; border-radius: 50%; object-fit: cover; }
+  .card h4 { margin: 10px 0 2px; font-weight: 600; font-size: 24px; line-height: 1.2; font-family: inherit; }
+  .card__sub { margin: 0 0 18px; color: #6e6e73; font-size: 13.5px; }
+  .card__rows { list-style: none; margin: 0; padding: 0; text-align: left; border-radius: 12px; background: #f2f2f6; }
+  .card__rows li + li { border-top: 1px solid #e0e0e4; }
+  .card__rows a { display: block; padding: 9px 14px; color: inherit; text-decoration: none; }
+  .card__rows a:hover { background: #e8e8ed; }
+  .card__label { display: block; font-size: 12.5px; color: #6e6e73; }
+  .card__value { display: block; color: #0a84ff; }
+
+  .ph :focus-visible { outline: 2px solid #0a84ff; outline-offset: 2px; }
+
+  /* small screens: shrink the phone a little and park the close button under it */
+  @media (max-width: 560px) {
+    .ph__device { --h: min(760px, 80svh); }
+    .ph__close { top: auto; bottom: 2.5svh; right: 50%; translate: 50% 0; }
+  }
+</style>
+
+<script>
+  let teardown: (() => void) | null = null;
+
+  function setupPhone() {
+    teardown?.();
+    teardown = null;
+    const dlg = document.querySelector<HTMLDialogElement>("[data-phone]");
+    if (!dlg) return;
+    const device = dlg.querySelector<HTMLElement>("[data-ph-device]")!;
+    const screen = dlg.querySelector<HTMLElement>(".ph__screen")!;
+    const homeBtn = dlg.querySelector<HTMLElement>("[data-ph-home]")!;
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const off: Array<() => void> = [];
+    const on = (el: EventTarget, ev: string, fn: (e: any) => void) => {
+      el.addEventListener(ev, fn);
+      off.push(() => el.removeEventListener(ev, fn));
+    };
+
+    let source: HTMLElement | null = null; // the desk phone we zoomed out of
+    let answered = false;
+    let callStart = 0;
+    let tick = 0;
+
+    const show = (view: string) => {
+      dlg.querySelectorAll<HTMLElement>("[data-view]").forEach((v) => (v.hidden = v.dataset.view !== view));
+      screen.dataset.screen = view;
+      homeBtn.hidden = view === "call";
+    };
+
+    // zoom between the desk phone and the centred one
+    const fromSource = () => {
+      if (!source || reduce) return null;
+      const a = source.getBoundingClientRect();
+      const b = device.getBoundingClientRect();
+      const s = a.height / b.height;
+      return `translate(${a.left + a.width / 2 - (b.left + b.width / 2)}px, ${a.top + a.height / 2 - (b.top + b.height / 2)}px) scale(${s}) rotate(4deg)`;
+    };
+    const open = (src: HTMLElement) => {
+      source = src;
+      show(answered ? "home" : "call");
+      dlg.showModal();
+      document.documentElement.classList.add("ph-lock");
+      const from = fromSource();
+      if (from) device.animate([{ transform: from, opacity: 0.6 }, { transform: "none", opacity: 1 }], { duration: 380, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)" });
+    };
+    const close = async () => {
+      const to = fromSource();
+      if (to) await device.animate([{ transform: "none" }, { transform: to, opacity: 0.4 }], { duration: 260, easing: "cubic-bezier(0.5, 0, 0.8, 0.4)" }).finished;
+      dlg.close();
+    };
+    on(dlg, "close", () => document.documentElement.classList.remove("ph-lock"));
+    on(dlg, "cancel", (e: Event) => { e.preventDefault(); close(); });
+    on(dlg, "click", (e: MouseEvent) => { if (e.target === dlg) close(); });
+
+    on(document, "desk:phone", (e: CustomEvent<HTMLElement>) => open(e.detail));
+
+    const clock = dlg.querySelector<HTMLElement>("[data-clock]")!;
+    const timer = dlg.querySelector<HTMLElement>("[data-call-timer]")!;
+    const paintTime = () => {
+      clock.textContent = new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }).replace(/\s?[AP]M$/i, "");
+      const s = Math.floor((Date.now() - callStart) / 1000);
+      timer.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+    };
+
+    on(dlg.querySelector("[data-ph-accept]")!, "click", () => {
+      answered = true;
+      callStart = Date.now();
+      paintTime();
+      tick = window.setInterval(paintTime, 1000);
+      source?.closest("[data-drag]")?.classList.add("is-answered");
+      show("home");
+      dlg.querySelector<HTMLElement>("[data-app]")?.focus();
+    });
+    on(dlg.querySelector("[data-ph-decline]")!, "click", async () => {
+      const src = source;
+      await close();
+      if (src) document.dispatchEvent(new CustomEvent("desk:throw", { detail: src }));
+    });
+    on(dlg.querySelector("[data-ph-close]")!, "click", () => close());
+
+    // apps
+    dlg.querySelectorAll<HTMLElement>("[data-app]").forEach((b) =>
+      on(b, "click", () => {
+        show(b.dataset.app!);
+        if (b.dataset.app === "messages") playIntro();
+      }),
+    );
+    const goHome = () => {
+      viewer.hidden = true;
+      show("home");
+    };
+    dlg.querySelectorAll("[data-ph-back]").forEach((b) => on(b, "click", goHome));
+    on(homeBtn, "click", goHome);
+
+    // Photos: grid -> swipeable viewer
+    const viewer = dlg.querySelector<HTMLElement>("[data-viewer]")!;
+    const strip = dlg.querySelector<HTMLElement>("[data-strip]")!;
+    const count = dlg.querySelector<HTMLElement>("[data-viewer-count]")!;
+    const total = strip.children.length;
+    const paintCount = () => { count.textContent = `${Math.round(strip.scrollLeft / strip.clientWidth) + 1} of ${total}`; };
+    dlg.querySelectorAll<HTMLElement>("[data-photo]").forEach((cell) =>
+      on(cell, "click", () => {
+        viewer.hidden = false;
+        strip.scrollTo({ left: Number(cell.dataset.photo) * strip.clientWidth, behavior: "instant" as ScrollBehavior });
+        paintCount();
+      }),
+    );
+    on(strip, "scroll", paintCount);
+    on(dlg.querySelector("[data-viewer-back]")!, "click", () => (viewer.hidden = true));
+    on(viewer, "keydown", (e: KeyboardEvent) => {
+      if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+        strip.scrollBy({ left: (e.key === "ArrowRight" ? 1 : -1) * strip.clientWidth, behavior: reduce ? "instant" as ScrollBehavior : "smooth" });
+      }
+    });
+
+    // Messages: the intro types itself out once, then the chips answer
+    const thread = dlg.querySelector<HTMLElement>("[data-thread]")!;
+    const intro = [...thread.querySelectorAll<HTMLElement>("[data-intro]")];
+    const chips = dlg.querySelectorAll<HTMLButtonElement>("[data-reply]");
+    let introDone = false;
+    let busy = false;
+    const wait = (ms: number) => new Promise((r) => setTimeout(r, reduce ? 0 : ms));
+    const typeIn = async (nodes: HTMLElement[]) => {
+      busy = true;
+      chips.forEach((c) => (c.disabled = true));
+      for (const n of nodes) {
+        const dots = document.createElement("p");
+        dots.className = "msg msg--in msg--typing";
+        dots.innerHTML = "<i></i><i></i><i></i>";
+        dots.setAttribute("aria-hidden", "true");
+        thread.append(dots);
+        thread.scrollTop = thread.scrollHeight;
+        await wait(Math.min(1100, 350 + (n.textContent?.length ?? 0) * 14));
+        dots.replaceWith(n);
+        n.hidden = false;
+        n.classList.add("is-new");
+        thread.scrollTop = thread.scrollHeight;
+        await wait(180);
+      }
+      busy = false;
+      chips.forEach((c) => (c.disabled = c.dataset.used === "1"));
+    };
+    intro.forEach((n) => (n.hidden = true));
+    const playIntro = () => {
+      if (introDone) return;
+      introDone = true;
+      intro.forEach((n) => n.remove());
+      typeIn(intro);
+    };
+    chips.forEach((chip) =>
+      on(chip, "click", () => {
+        if (busy) return;
+        chip.dataset.used = "1";
+        const mine = document.createElement("p");
+        mine.className = "msg msg--out is-new";
+        mine.textContent = chip.textContent;
+        thread.append(mine);
+        const tpl = dlg.querySelector<HTMLTemplateElement>(`template[data-answer="${chip.dataset.reply}"]`)!;
+        typeIn([...tpl.content.cloneNode(true).childNodes].filter((n): n is HTMLElement => n instanceof HTMLElement));
+      }),
+    );
+
+    teardown = () => {
+      off.forEach((f) => f());
+      clearInterval(tick);
+      if (dlg.open) dlg.close();
+    };
+  }
+
+  document.addEventListener("astro:page-load", setupPhone);
+</script>
